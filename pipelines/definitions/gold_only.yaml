@@ -1,0 +1,48 @@
+# Gold Layer Only Pipeline
+# Rebuilds gold layer from existing silver data
+
+name: gold_only
+description: Rebuild gold layer from silver without re-scraping
+enabled: true
+max_parallel: 1
+fail_fast: true
+
+tags:
+  - development
+  - gold
+  - rebuild
+
+tasks:
+  build_gold:
+    type: build_gold
+    config:
+      datasets: []  # All datasets
+      force_rebuild: true
+    timeout_seconds: 1800
+
+  load_gold_tables:
+    type: load_warehouse
+    depends_on:
+      - build_gold
+    config:
+      load_type: gold
+      truncate: true  # Fresh load
+    timeout_seconds: 600
+
+  refresh_views:
+    type: refresh_views
+    depends_on:
+      - load_gold_tables
+    config:
+      concurrent: true
+    timeout_seconds: 300
+
+  quality_checks:
+    type: quality_checks
+    depends_on:
+      - build_gold
+    config:
+      layers:
+        - gold
+      fail_on_warning: false
+    timeout_seconds: 300

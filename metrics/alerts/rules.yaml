@@ -1,0 +1,98 @@
+# Alert Rules Configuration
+# Defines when and how to send alerts
+
+notification_channels:
+  console:
+    enabled: true
+    severity_threshold: info
+
+  slack:
+    enabled: false
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    channel: "#data-alerts"
+    severity_threshold: warning
+
+  email:
+    enabled: false
+    smtp_host: ${SMTP_HOST}
+    smtp_port: 587
+    from_address: alerts@example.com
+    to_addresses:
+      - data-team@example.com
+    severity_threshold: error
+
+alert_rules:
+  # Freshness alerts
+  stale_silver_data:
+    description: Silver layer data is stale
+    metric: dataset_age_hours
+    layer: silver
+    condition: "> sla_hours"
+    severity: warning
+    channels:
+      - console
+      - slack
+    cooldown_minutes: 60
+
+  stale_gold_data:
+    description: Gold layer data is stale
+    metric: dataset_age_hours
+    layer: gold
+    condition: "> sla_hours"
+    severity: error
+    channels:
+      - console
+      - slack
+      - email
+    cooldown_minutes: 30
+
+  # Quality alerts
+  high_null_rate:
+    description: Column has high null rate
+    metric: null_rate
+    condition: "> 30%"
+    severity: warning
+    channels:
+      - console
+    cooldown_minutes: 120
+
+  empty_dataset:
+    description: Dataset has no rows
+    metric: row_count
+    condition: "== 0"
+    severity: critical
+    channels:
+      - console
+      - slack
+      - email
+    cooldown_minutes: 0
+
+  # Pipeline alerts
+  pipeline_failed:
+    description: Pipeline execution failed
+    metric: pipeline_status
+    condition: "== 'failed'"
+    severity: critical
+    channels:
+      - console
+      - slack
+      - email
+    cooldown_minutes: 0
+
+  pipeline_slow:
+    description: Pipeline took longer than expected
+    metric: pipeline_duration_seconds
+    condition: "> 7200"  # 2 hours
+    severity: warning
+    channels:
+      - console
+      - slack
+    cooldown_minutes: 60
+
+escalation:
+  enabled: false
+  rules:
+    - after_minutes: 30
+      escalate_to: lead
+    - after_minutes: 60
+      escalate_to: manager

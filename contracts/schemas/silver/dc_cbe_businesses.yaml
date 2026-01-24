@@ -1,0 +1,100 @@
+# DC CBE Businesses Silver Layer Data Contract
+name: dc_cbe_businesses
+version: "1.0"
+description: DC Certified Business Enterprise (CBE) registry
+owner: data-engineering
+layer: silver
+
+primary_key:
+  - business_id
+
+partition_columns:
+  - source
+  - date
+
+tags:
+  - cbe
+  - small-business
+  - dc-government
+  - certification
+
+sla:
+  freshness_hours: 168  # Weekly updates
+  min_row_count: 500
+  max_null_rate: 0.3
+  max_duplicate_rate: 0.0
+
+columns:
+  business_id:
+    type: string
+    nullable: false
+    description: Unique business identifier
+    primary_key: true
+
+  business_name:
+    type: string
+    nullable: false
+    description: Legal business name
+    max_null_rate: 0.0
+
+  trade_name:
+    type: string
+    nullable: true
+    description: Trade name (DBA)
+
+  certification_type:
+    type: string
+    nullable: false
+    description: Type of CBE certification
+    allowed_values:
+      - SBE
+      - LBE
+      - DBE
+      - DZE
+      - ROB
+      - VOB
+
+  certification_date:
+    type: date
+    nullable: true
+    description: Date of certification
+
+  expiration_date:
+    type: date
+    nullable: true
+    description: Certification expiration date
+
+  address:
+    type: string
+    nullable: true
+    description: Business address
+
+  ward:
+    type: string
+    nullable: true
+    description: DC ward where business is located
+
+  nigp_codes:
+    type: string
+    nullable: true
+    description: Comma-separated NIGP commodity codes
+
+  owner_name:
+    type: string
+    nullable: true
+    description: Business owner name
+
+  contact_email:
+    type: string
+    nullable: true
+    description: Contact email address
+
+  source:
+    type: string
+    nullable: false
+    description: Source system identifier
+
+  ingested_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when record was ingested

@@ -1,0 +1,83 @@
+# Quality Metric Definitions
+# Defines data quality metrics and thresholds
+
+metrics:
+  null_rate:
+    description: Percentage of null values in a column
+    type: gauge
+    unit: percent
+    calculation: (null_count / total_count) * 100
+
+  completeness:
+    description: Percentage of non-null values
+    type: gauge
+    unit: percent
+    calculation: 100 - null_rate
+
+  row_count:
+    description: Total number of rows in dataset
+    type: gauge
+    unit: count
+
+  duplicate_rate:
+    description: Percentage of duplicate primary key values
+    type: gauge
+    unit: percent
+    calculation: (duplicate_count / total_count) * 100
+
+  quality_score:
+    description: Overall quality score (0-100)
+    type: gauge
+    unit: score
+    calculation: weighted_average(completeness, uniqueness, validity)
+
+thresholds:
+  default:
+    max_null_rate: 30
+    max_duplicate_rate: 0
+    min_row_count: 1
+
+  silver:
+    dc_contracts:
+      max_null_rate: 20
+      min_row_count: 1000
+      required_columns:
+        - contract_number
+        - vendor_name
+
+    dc_payments:
+      max_null_rate: 15
+      min_row_count: 10000
+      required_columns:
+        - payment_id
+        - amount
+
+  gold:
+    spend_by_vendor:
+      max_null_rate: 10
+      min_row_count: 100
+
+    property_by_ward:
+      max_null_rate: 5
+      min_row_count: 8
+
+alerts:
+  high_null_rate:
+    condition: null_rate > max_null_rate
+    severity: warning
+    message: "Column {column} has high null rate: {null_rate}% > {max_null_rate}%"
+
+  empty_dataset:
+    condition: row_count == 0
+    severity: critical
+    message: "Dataset {dataset} is empty"
+
+  low_row_count:
+    condition: row_count < min_row_count
+    severity: warning
+    message: "Dataset {dataset} has fewer rows than expected: {row_count} < {min_row_count}"
+
+  duplicate_keys:
+    condition: duplicate_rate > 0
+    severity: error
+    message: "Dataset {dataset} has duplicate primary keys: {duplicate_rate}%"

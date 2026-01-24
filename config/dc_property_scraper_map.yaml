@@ -1,0 +1,438 @@
+# ======================================================================
+# DC PROPERTY DATA EXTRACTION: COHESIVE SCRAPER MAP (DEDUPED, NON-BREAKING)
+# Goal: Add more data to the datalake with ZERO behavior change to existing flows.
+#
+# PATCH NOTES (ADD-ONLY, NON-BREAKING):
+# - Added datasets.location_verifier.storage_aliases for datalake PK consistency
+# - Added joins block to make linkage explicit (SSL + Lat/Lon)
+# - Added canonical references on legacy alias fields to prevent drift
+# - Added formatter_spec deterministic emphasis behavior + split raw vs friendly inputs
+# - Added optional source_ref pointers (does not replace source_url; only documents)
+# - Added governance to prevent future divergence between canonical vs legacy blocks
+# ======================================================================
+
+version: "1.0.0"
+jurisdiction: "Washington, DC"
+
+# -------------------------
+# Canonical endpoints
+# -------------------------
+endpoints:
+  location_verifier:
+    base: "https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx"
+    find_location: "https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx/findLocation2"
+
+  dcgis_data:
+    property_and_land_53:
+      base: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      description: "Integrated Tax System Public Extract (ITSPE) - Property & Land"
+    cama_residential_25:
+      base: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+      description: "Computer Assisted Mass Appraisal (Residential) - CAMA"
+
+  dcgis_apps_propertyquest:
+    base: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer"
+    layers:
+      historic_district: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/16/query"
+      historic_landmark: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/18/query"
+      anc: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/19/query"
+      flood_plain: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/23/query"
+      zoning: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/25/query"
+      ward: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/35/query"
+
+# -------------------------
+# Datalake storage targets
+# -------------------------
+datalake:
+  tables:
+    dc_location_verifier_raw:
+      grain: "search_input"
+      primary_keys: ["input_address_string"]
+    dc_itspe_property_land_raw:
+      grain: "ssl"
+      primary_keys: ["SSL"]
+    dc_cama_residential_raw:
+      grain: "ssl"
+      primary_keys: ["SSL"]
+    dc_propertyquest_highlights_raw:
+      grain: "latlon"
+      primary_keys: ["LATITUDE", "LONGITUDE"]
+
+# -------------------------
+# Explicit joins (documentation-only; no runtime behavior implied)
+# -------------------------
+joins:
+  - from: "datasets.location_verifier"
+    to: "datasets.itspe_property_land_53"
+    on: ["SSL"]
+  - from: "datasets.location_verifier"
+    to: "datasets.cama_residential_25"
+    on: ["SSL"]
+  - from: "datasets.location_verifier"
+    to: "datasets.propertyquest_highlights"
+    on: ["LATITUDE", "LONGITUDE"]
+
+# -------------------------
+# Governance (prevents future drift between canonical + legacy blocks)
+# -------------------------
+governance:
+  canonical_datasets:
+    - "datasets.location_verifier"
+    - "datasets.itspe_property_land_53"
+    - "datasets.cama_residential_25"
+    - "datasets.propertyquest_highlights"
+  legacy_alias_policy:
+    tax_office_financials: "May alias canonical fields only; no unique field definitions."
+    property_quest_data_map: "May remap canonical fields only; no unique field definitions."
+  precedence_rules:
+    - "If a field exists in canonical datasets, legacy blocks must reference it (via canonical_field_ref when applicable)."
+    - "Do not create a second semantic name for the same raw field unless it is explicitly marked as an alias."
+
+# -------------------------
+# Datasets (canonical field definitions)
+# -------------------------
+datasets:
+  # 0) Search & Location (Key bootstrap)
+  location_verifier:
+    source_description: "DC Citizen Atlas - Location Verifier"
+    source_url: "https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx/findLocation2"
+    source_ref: "endpoints.location_verifier.find_location"
+    method: "GET"
+    parameters:
+      str: "[Address String]"
+    storage_aliases:
+      input_address_string: "str"
+    return_fields:
+      SSL: "Square, Suffix, Lot (Primary Key)"
+      LATITUDE: "Y Coordinate"
+      LONGITUDE: "X Coordinate"
+
+  # 1) ITSPE / OTR financials + identification (DEDUPED CANONICAL)
+  itspe_property_land_53:
+    source_description: "Office of Tax and Revenue (OTR) Public Extract / ITSPE"
+    base_endpoint: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+    source_ref: "endpoints.dcgis_data.property_and_land_53.base"
+    fields:
+      # Identification
+      ssl:
+        field: "SSL"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Square, Suffix, Lot (Primary Key)"
+      premise_address:
+        field: "PREMISEADDR"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Premise address on record"
+      owner_name:
+        field: "OWNERNAME"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Owner name on record"
+
+      # Price (Market Transaction)
+      last_sale_price:
+        field: "PRICE"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "The amount paid for the property in the last recorded deed transfer."
+      last_sale_date:
+        field: "SALEDATE"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Date of the last recorded sale."
+
+      # Cost (Taxable Value)
+      land_value:
+        field: "LAND_VALUE"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "The assessed value of the land portion only."
+      improvement_value:
+        field: "IMPR_VALUE"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "The assessed value of the building/structure only."
+      total_assessment:
+        field: "ASSESSMENT"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Total tax assessed value (Land + Improvement)."
+
+      # Tax classification
+      tax_class:
+        field: "CLASS3"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Tax Class (e.g., 001 for Residential, 002 for Commercial)."
+      tax_rate_code_usecode:
+        field: "USECODE"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Specific use code used for valuation (e.g., 11 for Residential Row Single Family)."
+
+      # Building/site basics
+      land_area:
+        field: "LANDAREA"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+        description: "Lot size in square feet"
+
+  # 2) CAMA Residential (building characteristics)
+  cama_residential_25:
+    source_description: "Computer Assisted Mass Appraisal (Residential) - CAMA"
+    base_endpoint: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+    source_ref: "endpoints.dcgis_data.cama_residential_25.base"
+    fields:
+      year_built:
+        field: "AYB"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+        description: "Actual Year Built"
+      living_area:
+        field: "GBA"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+        description: "Gross Building Area"
+      bedrooms:
+        field: "BEDRM"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+        description: "Bedrooms"
+      bathrooms:
+        field: "BATHRM"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+        description: "Bathrooms"
+      style:
+        field: "STYLE"
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+        description: "e.g. Row Inside, Semi-Detached"
+
+  # 3) PropertyQuest spatial highlights (Lat/Lon intersects)
+  propertyquest_highlights:
+    source_description: "DCGIS APPS - PropertyQuest spatial layers"
+    base_endpoint: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer"
+    source_ref: "endpoints.dcgis_apps_propertyquest.base"
+    query_logic: "Spatial Intersects (Lat/Lon). If count > 0, property is in the district."
+    layers:
+      historic_district:
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/16/query"
+        source_ref: "endpoints.dcgis_apps_propertyquest.layers.historic_district"
+        return_field: "NAME"
+      historic_landmark:
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/18/query"
+        source_ref: "endpoints.dcgis_apps_propertyquest.layers.historic_landmark"
+        return_field: "NAME"
+      zoning:
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/25/query"
+        source_ref: "endpoints.dcgis_apps_propertyquest.layers.zoning"
+        return_field: "ZONING_LABEL"
+      flood_plain:
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/23/query"
+        source_ref: "endpoints.dcgis_apps_propertyquest.layers.flood_plain"
+        return_field: "ZONE_SUBTY"
+      ward:
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/35/query"
+        source_ref: "endpoints.dcgis_apps_propertyquest.layers.ward"
+        return_field: "WARD"
+      anc:
+        source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/19/query"
+        source_ref: "endpoints.dcgis_apps_propertyquest.layers.anc"
+        return_field: "SMD_ID"
+        description: "Advisory Neighborhood Commission"
+
+# -------------------------
+# Backwards-compatible "system structure" mapping
+# -------------------------
+property_quest_data_map:
+  # 1. SEARCH & LOCATION (The "Key")
+  search_input:
+    label: "Search Address"
+    source_url: "https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx/findLocation2"
+    method: "GET"
+    parameters:
+      str: "[Address String]"
+    return_fields:
+      - SSL: "Square, Suffix, Lot (Primary Key)"
+      - LATITUDE: "Y Coordinate"
+      - LONGITUDE: "X Coordinate"
+
+  # 2. IDENTIFICATION & VALUATION (ITSPE / OTR)
+  identification:
+    ssl:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "SSL"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.ssl"
+    premise_address:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "PREMISEADDR"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.premise_address"
+    owner_name:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "OWNERNAME"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.owner_name"
+
+  valuation_and_sales:
+    current_assessment:
+      description: "Total Assessed Value"
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "ASSESSMENT"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.total_assessment"
+    land_value:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "LAND_VALUE"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.land_value"
+    improvement_value:
+      description: "Building Value"
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "IMPR_VALUE"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.improvement_value"
+    last_sale_price:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "PRICE"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.last_sale_price"
+    last_sale_date:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "SALEDATE"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.last_sale_date"
+
+  # 3. BUILDING CHARACTERISTICS (CAMA + ITSPE land area)
+  building_details:
+    land_area:
+      description: "Lot size in square feet"
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+      field: "LANDAREA"
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.land_area"
+    year_built:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+      field: "AYB"
+      canonical_field_ref: "datasets.cama_residential_25.fields.year_built"
+    living_area:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+      field: "GBA"
+      canonical_field_ref: "datasets.cama_residential_25.fields.living_area"
+    bedrooms:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+      field: "BEDRM"
+      canonical_field_ref: "datasets.cama_residential_25.fields.bedrooms"
+    bathrooms:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+      field: "BATHRM"
+      canonical_field_ref: "datasets.cama_residential_25.fields.bathrooms"
+    style:
+      description: "e.g. Row Inside, Semi-Detached"
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/25"
+      field: "STYLE"
+      canonical_field_ref: "datasets.cama_residential_25.fields.style"
+
+  # 4. SITE HIGHLIGHTS (Spatial Checks)
+  highlights:
+    historic_district:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/16/query"
+      logic: "Spatial Intersects (Lat/Lon)"
+      return_field: "NAME"
+      canonical_layer_ref: "datasets.propertyquest_highlights.layers.historic_district"
+    historic_landmark:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/18/query"
+      logic: "Spatial Intersects (Lat/Lon)"
+      return_field: "NAME"
+      canonical_layer_ref: "datasets.propertyquest_highlights.layers.historic_landmark"
+    zoning:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/25/query"
+      logic: "Spatial Intersects (Lat/Lon)"
+      return_field: "ZONING_LABEL"
+      canonical_layer_ref: "datasets.propertyquest_highlights.layers.zoning"
+    flood_plain:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/23/query"
+      logic: "Spatial Intersects (Lat/Lon)"
+      return_field: "ZONE_SUBTY"
+      canonical_layer_ref: "datasets.propertyquest_highlights.layers.flood_plain"
+    ward:
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/35/query"
+      logic: "Spatial Intersects (Lat/Lon)"
+      return_field: "WARD"
+      canonical_layer_ref: "datasets.propertyquest_highlights.layers.ward"
+    anc:
+      description: "Advisory Neighborhood Commission"
+      source_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer/19/query"
+      logic: "Spatial Intersects (Lat/Lon)"
+      return_field: "SMD_ID"
+      canonical_layer_ref: "datasets.propertyquest_highlights.layers.anc"
+
+# -------------------------
+# Legacy alias: OTR financials block
+# -------------------------
+tax_office_financials:
+  source_description: "Office of Tax and Revenue (OTR) Public Extract"
+  base_endpoint: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/53"
+  source_ref: "endpoints.dcgis_data.property_and_land_53.base"
+
+  sale_details:
+    last_sale_price:
+      field: "PRICE"
+      description: "The amount paid for the property in the last recorded deed transfer."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.last_sale_price"
+    last_sale_date:
+      field: "SALEDATE"
+      description: "Date of the last recorded sale."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.last_sale_date"
+
+  current_assessment_values:
+    land_value:
+      field: "LAND_VALUE"
+      description: "The assessed value of the land portion only."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.land_value"
+    improvement_value:
+      field: "IMPR_VALUE"
+      description: "The assessed value of the building/structure only."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.improvement_value"
+    total_assessment:
+      field: "ASSESSMENT"
+      description: "Total tax assessed value (Land + Improvement)."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.total_assessment"
+
+  tax_status:
+    tax_class:
+      field: "CLASS3"
+      description: "Tax Class (e.g., 001 for Residential, 002 for Commercial)."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.tax_class"
+    tax_rate_code:
+      field: "USECODE"
+      description: "Specific use code used for valuation (e.g., 11 for Residential Row Single Family)."
+      canonical_field_ref: "datasets.itspe_property_land_53.fields.tax_rate_code_usecode"
+
+# -------------------------
+# Formatter prompt
+# -------------------------
+formatter_spec:
+  role: "DC Real Estate Data Formatter"
+  objective: "Accept raw property data (JSON or text) and generate a clean Site Related Information table in the DC PropertyQuest style."
+
+  classification_rules:
+    determine_property_type:
+      raw_inputs: ["USECODE", "CLASS3"]
+      friendly_inputs: ["Use Code", "Class3", "CLASS3", "USECODE"]
+      output: "Residential | Commercial | Vacant"
+      notes:
+        - "Prefer Use Code if present; fall back to Class."
+        - "If land-only indicators exist and building fields are missing, classify as Vacant."
+
+  output_requirements:
+    format: "Single Markdown table with two columns: Category | Details"
+    sections_use_bold_headers: true
+    dynamic_logic:
+      residential_rows: ["Bedrooms", "Bathrooms", "Style", "Living Area (SqFt)"]
+      commercial_rows: ["Gross Floor Area", "Construction Type", "Number of Stories", "Rentable Area"]
+      vacant_land_logic: "Hide building-specific rows; focus on Land Area and Zoning"
+    highlights_logic:
+      historic_null_behavior: "No historic resources noted."
+      emphasis_order:
+        - "html_red_span"
+        - "bold_italics"
+      emphasis: "Render the message in red OR bold italics (implementation-dependent)."
+
+  strict_output_template: |
+    | Category | Details |
+    | :--- | :--- |
+    | **IDENTIFICATION** | |
+    | SSL (ID) | *[Insert SSL]* |
+    | Premise Address | *[Insert Address]* |
+    | **VALUATION & SALES** | |
+    | Current Assessment | *[Insert Total Value]* |
+    | Last Sale Price | *[Insert Price]* |
+    | Last Sale Date | *[Insert Date]* |
+    | **BUILDING CHARACTERISTICS** | |
+    | Property Type | *[Insert Res/Comm/Vacant]* |
+    | Year Built | *[Insert Year]* |
+    | Land Area | *[Insert SqFt]* |
+    | *[Dynamic Row]* | *[Insert Bed/Bath OR Commercial Floor Area]* |
+    | **SITE INFORMATION (Highlights)** | |
+    | Zoning | *[Insert Zoning Code]* |
+    | Ward / ANC | *[Insert Ward & ANC]* |
+    | Historic Status | *[Insert "No historic resources noted" OR District Name]* |

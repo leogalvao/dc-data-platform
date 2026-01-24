@@ -1,0 +1,19 @@
+# Development environment configuration
+environment: dev
+
+paths:
+  scrapers_unified: /opt/dc-platform/scrapers_unified
+  warehouse: /opt/dc-platform/warehouse
+
+database:
+  host: ${WAREHOUSE_DB_HOST}
+  port: 5432
+  name: dc_analytics_dev
+  user: ${WAREHOUSE_DB_USER}
+
+logging:
+  level: INFO
+
+quality:
+  max_null_rate_warning: 0.2
+  max_null_rate_error: 0.4

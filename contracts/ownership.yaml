@@ -1,0 +1,89 @@
+# Dataset Ownership and Responsibility
+# Maps datasets to owners and teams
+
+teams:
+  data-engineering:
+    name: Data Engineering
+    email: data-engineering@example.com
+    slack: "#data-engineering"
+    members:
+      - lead: John Doe
+      - member: Jane Smith
+
+  data-science:
+    name: Data Science
+    email: data-science@example.com
+    slack: "#data-science"
+    members:
+      - lead: Alice Johnson
+
+  analytics:
+    name: Analytics
+    email: analytics@example.com
+    slack: "#analytics"
+    members:
+      - lead: Bob Wilson
+
+datasets:
+  # Silver layer
+  dc_contracts:
+    owner: data-engineering
+    steward: John Doe
+    classification: internal
+    pii: false
+
+  dc_payments:
+    owner: data-engineering
+    steward: John Doe
+    classification: internal
+    pii: false
+
+  dc_cbe_businesses:
+    owner: data-engineering
+    steward: Jane Smith
+    classification: internal
+    pii: true  # Contains business owner names
+
+  dc_residential_cama:
+    owner: data-engineering
+    steward: Jane Smith
+    classification: internal
+    pii: false
+
+  dc_purchase_orders:
+    owner: data-engineering
+    steward: John Doe
+    classification: internal
+    pii: false
+
+  # Gold layer
+  spend_by_vendor:
+    owner: analytics
+    steward: Bob Wilson
+    classification: internal
+    pii: false
+
+  property_by_ward:
+    owner: analytics
+    steward: Bob Wilson
+    classification: public
+    pii: false
+
+  agency_spend:
+    owner: analytics
+    steward: Bob Wilson
+    classification: internal
+    pii: false
+
+  # Diamond layer
+  vendor_features:
+    owner: data-science
+    steward: Alice Johnson
+    classification: confidential
+    pii: false
+
+  property_features:
+    owner: data-science
+    steward: Alice Johnson
+    classification: confidential
+    pii: false

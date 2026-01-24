@@ -1,0 +1,19 @@
+# Local development environment configuration
+environment: local
+
+paths:
+  scrapers_unified: ~/OneDrive/Scripts/scrapers_unified
+  warehouse: ~/OneDrive/Scripts/warehouse
+
+database:
+  host: localhost
+  port: 5432
+  name: dc_analytics
+  user: postgres
+
+logging:
+  level: DEBUG
+
+quality:
+  max_null_rate_warning: 0.3
+  max_null_rate_error: 0.5

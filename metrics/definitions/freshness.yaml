@@ -1,0 +1,63 @@
+# Freshness Metric Definitions
+# Defines how to measure and alert on data freshness
+
+metrics:
+  dataset_age_hours:
+    description: Hours since dataset was last updated
+    type: gauge
+    unit: hours
+    calculation: current_time - last_modified_time
+
+  freshness_sla_pct:
+    description: Percentage of datasets within freshness SLA
+    type: gauge
+    unit: percent
+    calculation: (datasets_within_sla / total_datasets) * 100
+
+  stale_dataset_count:
+    description: Number of datasets exceeding freshness SLA
+    type: gauge
+    unit: count
+    calculation: count(datasets where age > sla)
+
+thresholds:
+  silver:
+    default_sla_hours: 24
+    warning_buffer_pct: 20  # Warn at 80% of SLA
+    datasets:
+      dc_contracts: 24
+      dc_payments: 24
+      dc_cbe_businesses: 168
+      dc_residential_cama: 168
+      dc_purchase_orders: 24
+
+  gold:
+    default_sla_hours: 24
+    warning_buffer_pct: 20
+    datasets:
+      spend_by_vendor: 24
+      property_by_ward: 168
+      agency_spend: 24
+
+  diamond:
+    default_sla_hours: 168
+    warning_buffer_pct: 20
+    datasets:
+      vendor_features: 168
+      property_features: 168
+
+alerts:
+  stale_critical:
+    condition: dataset_age_hours > sla_hours * 2
+    severity: critical
+    message: "Dataset {dataset} is critically stale: {age_hours}h > {sla_hours * 2}h"
+
+  stale_warning:
+    condition: dataset_age_hours > sla_hours
+    severity: warning
+    message: "Dataset {dataset} exceeds SLA: {age_hours}h > {sla_hours}h"
+
+  approaching_stale:
+    condition: dataset_age_hours > sla_hours * 0.8
+    severity: info
+    message: "Dataset {dataset} approaching SLA: {age_hours}h / {sla_hours}h"

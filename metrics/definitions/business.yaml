@@ -1,0 +1,113 @@
+# Business Metric Definitions
+# Defines business-level KPIs and metrics
+
+metrics:
+  # Procurement metrics
+  total_spend:
+    description: Total government spending
+    type: counter
+    unit: USD
+    source: gold.spend_by_vendor
+    calculation: sum(total_spend)
+
+  vendor_count:
+    description: Number of unique vendors
+    type: gauge
+    unit: count
+    source: gold.spend_by_vendor
+    calculation: count(distinct vendor_id)
+
+  cbe_spend_percentage:
+    description: Percentage of spending with CBE vendors
+    type: gauge
+    unit: percent
+    source: gold.spend_by_vendor
+    calculation: (sum(total_spend where is_cbe=true) / sum(total_spend)) * 100
+
+  avg_contract_value:
+    description: Average contract value
+    type: gauge
+    unit: USD
+    source: gold.spend_by_vendor
+    calculation: avg(avg_contract_value)
+
+  # Real estate metrics
+  total_assessed_value:
+    description: Total assessed property value
+    type: gauge
+    unit: USD
+    source: gold.property_by_ward
+    calculation: sum(total_assessed_value)
+
+  avg_property_value:
+    description: Average assessed property value
+    type: gauge
+    unit: USD
+    source: gold.property_by_ward
+    calculation: avg(avg_assessed_value)
+
+  property_count:
+    description: Total number of properties
+    type: gauge
+    unit: count
+    source: gold.property_by_ward
+    calculation: sum(property_count)
+
+  # Agency metrics
+  agency_count:
+    description: Number of active agencies
+    type: gauge
+    unit: count
+    source: gold.agency_spend
+    calculation: count(distinct agency_code)
+
+  top_spending_agency:
+    description: Agency with highest spending
+    type: categorical
+    source: gold.agency_spend
+    calculation: max_by(agency_name, total_spend)
+
+dimensions:
+  time:
+    - fiscal_year
+    - fiscal_quarter
+    - fiscal_month
+
+  geography:
+    - ward
+    - neighborhood
+
+  entity:
+    - agency
+    - vendor
+    - category
+
+thresholds:
+  cbe_spend_goal:
+    description: CBE spending goal percentage
+    target: 50
+    warning: 40
+    critical: 30
+
+  vendor_concentration:
+    description: Maximum spending with single vendor
+    warning: 10  # percent
+    critical: 20
+
+dashboards:
+  executive_summary:
+    metrics:
+      - total_spend
+      - vendor_count
+      - cbe_spend_percentage
+      - avg_contract_value
+    refresh_frequency: daily
+
+  real_estate_overview:
+    metrics:
+      - total_assessed_value
+      - avg_property_value
+      - property_count
+    dimensions:
+      - ward
+    refresh_frequency: weekly

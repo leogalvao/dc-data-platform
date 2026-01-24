@@ -1,0 +1,91 @@
+# Real Estate Semantic Model
+# Unified definitions for property and real estate analytics
+
+name: real_estate
+description: DC real estate and property value analytics
+
+source_tables:
+  - analytics.gold_property_by_ward
+  - data.silver.dc_residential_cama
+
+dimensions:
+  ward:
+    description: DC ward number (1-8)
+    source_column: ward
+    source_table: gold_property_by_ward
+    data_type: string
+
+  property_type:
+    description: Type of property (residential, commercial)
+    source_column: property_type
+    source_table: dc_residential_cama
+    data_type: string
+
+  use_code:
+    description: Property use code
+    source_column: use_code
+    source_table: dc_residential_cama
+    data_type: string
+
+  year_built:
+    description: Year property was built
+    source_column: year_built
+    source_table: dc_residential_cama
+    data_type: number
+
+  bedroom_count:
+    description: Number of bedrooms
+    source_column: bedrooms
+    source_table: dc_residential_cama
+    data_type: number
+
+measures:
+  property_count:
+    description: Number of properties
+    expression: COUNT(*)
+    aggregation: count
+    format: number
+
+  total_assessed_value:
+    description: Total assessed property value
+    expression: SUM(assessed_value)
+    aggregation: sum
+    format: currency
+    unit: USD
+
+  avg_assessed_value:
+    description: Average assessed value per property
+    expression: AVG(assessed_value)
+    aggregation: average
+    format: currency
+    unit: USD
+
+  median_assessed_value:
+    description: Median assessed value
+    expression: PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY assessed_value)
+    aggregation: median
+    format: currency
+    unit: USD
+
+  avg_price_per_sqft:
+    description: Average price per square foot
+    expression: AVG(assessed_value / NULLIF(square_footage, 0))
+    aggregation: average
+    format: currency
+    unit: USD
+
+  total_square_footage:
+    description: Total square footage
+    expression: SUM(square_footage)
+    aggregation: sum
+    format: number
+    unit: sqft
+
+  avg_property_age:
+    description: Average property age in years
+    expression: AVG(EXTRACT(YEAR FROM CURRENT_DATE) - year_built)
+    aggregation: average
+    format: number
+    unit: years
+
+relationships: []

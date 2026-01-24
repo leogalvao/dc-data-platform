@@ -1,0 +1,61 @@
+# Diamond Only Pipeline
+# Rebuild diamond layer from existing gold and silver data
+# Use this to update ML features without re-scraping
+
+name: diamond_only
+description: Rebuild diamond layer ML features from existing gold/silver data
+enabled: true
+max_parallel: 1
+fail_fast: true
+
+tags:
+  - ml-features
+  - diamond
+  - rebuild
+  - analytics
+
+tasks:
+  validate_gold:
+    type: validate_layer
+    config:
+      layer: gold
+      fail_on_warning: false
+    timeout_seconds: 300
+
+  build_diamond:
+    type: build_diamond
+    depends_on:
+      - validate_gold
+    config:
+      datasets: []  # All datasets
+      force_rebuild: true  # Force rebuild since we're explicitly rebuilding
+    timeout_seconds: 1800  # 30 minutes
+
+  validate_diamond:
+    type: validate_layer
+    depends_on:
+      - build_diamond
+    config:
+      layer: diamond
+      fail_on_warning: false
+      strict: true  # Strict validation for ML features
+    timeout_seconds: 300
+
+  load_diamond_tables:
+    type: load_warehouse
+    depends_on:
+      - validate_diamond
+    config:
+      load_type: diamond
+      truncate: false
+    timeout_seconds: 600
+
+  quality_checks:
+    type: quality_checks
+    depends_on:
+      - load_diamond_tables
+    config:
+      layers:
+        - diamond
+      fail_on_warning: false
+    timeout_seconds: 600

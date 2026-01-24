@@ -1,0 +1,90 @@
+# Incremental Update Pipeline
+# Updates only changed data from sources
+
+name: incremental
+description: Incremental pipeline - scrape new data only, update affected layers
+enabled: true
+max_parallel: 2
+fail_fast: false
+schedule: "0 */4 * * *"  # Every 4 hours
+
+tags:
+  - production
+  - incremental
+  - frequent
+
+tasks:
+  scrape_sources:
+    type: scrape
+    config:
+      sources: []  # All sources
+      skip_existing: true  # Only fetch new data
+    timeout_seconds: 3600
+
+  validate_bronze:
+    type: validate_layer
+    depends_on:
+      - scrape_sources
+    config:
+      layer: bronze
+      fail_on_warning: false
+    timeout_seconds: 300
+
+  build_silver:
+    type: build_silver
+    depends_on:
+      - validate_bronze
+    config:
+      sources: []
+      force_rebuild: false
+      validate_contracts: true
+    timeout_seconds: 900
+
+  validate_silver:
+    type: validate_layer
+    depends_on:
+      - build_silver
+    config:
+      layer: silver
+      fail_on_warning: false
+    timeout_seconds: 300
+
+  build_gold:
+    type: build_gold
+    depends_on:
+      - validate_silver
+    config:
+      datasets: []
+      force_rebuild: false
+    timeout_seconds: 900
+
+  load_gold_tables:
+    type: load_warehouse
+    depends_on:
+      - build_gold
+    config:
+      load_type: gold
+      truncate: false
+    timeout_seconds: 300
+
+  refresh_views:
+    type: refresh_views
+    depends_on:
+      - load_gold_tables
+    config:
+      concurrent: true
+      views:
+        - analytics.mv_kpi_summary
+        - analytics.mv_spend_by_ward
+    timeout_seconds: 120
+
+  quality_checks:
+    type: quality_checks
+    depends_on:
+      - build_gold
+    config:
+      layers:
+        - silver
+        - gold
+      fail_on_warning: false
+    timeout_seconds: 300

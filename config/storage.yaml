@@ -1,0 +1,49 @@
+# Universal Scraper Framework - Storage Configuration
+# Lakehouse settings for Bronze, Silver, and Quarantine layers
+
+# Root path for all data storage
+lakehouse_root: "data"
+
+# Bronze layer (raw payloads)
+bronze:
+  path: "data/bronze"
+  file_format: parquet
+  compression: snappy
+  partition_by_source: true
+  partition_by_date: true
+  date_partition_format: "%Y-%m-%d"
+
+# Silver layer (normalized records)
+silver:
+  path: "data/silver"
+  file_format: parquet  # Or "delta" if Delta Lake enabled
+  compression: snappy
+  partition_by_source: true
+  partition_by_date: true
+  write_mode: append  # append, overwrite, merge
+  enable_dedup: true
+  batch_size: 10000
+
+  # Delta Lake settings (if using delta format)
+  delta:
+    enabled: false  # Set to true to use Delta Lake
+    optimize_interval: 10  # Runs between OPTIMIZE
+    vacuum_hours: 168  # 7 days retention
+
+# Quarantine (failed records)
+quarantine:
+  path: "data/quarantine"
+  file_format: json  # JSON for human readability
+  partition_by_source: true
+  partition_by_date: true
+
+# Checkpoints (incremental loading state)
+checkpoints:
+  path: "data/checkpoints"
+  max_seen_hashes: 10000  # Limit to avoid memory issues
+
+# Reports (run reports)
+reports:
+  path: "data/reports"
+  format: json
+  keep_days: 30  # Retention period

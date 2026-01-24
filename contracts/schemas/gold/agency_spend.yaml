@@ -1,0 +1,89 @@
+# Agency Spend Summary Gold Layer Data Contract
+name: agency_spend
+version: "1.0"
+description: Aggregated spending statistics by DC government agency
+owner: data-engineering
+layer: gold
+
+primary_key:
+  - agency_code
+
+tags:
+  - procurement
+  - agency
+  - spending
+  - analytics
+
+sla:
+  freshness_hours: 24
+  min_row_count: 10
+  max_null_rate: 0.1
+  max_duplicate_rate: 0.0
+
+columns:
+  agency_code:
+    type: string
+    nullable: false
+    description: Agency code/abbreviation
+    primary_key: true
+
+  agency_name:
+    type: string
+    nullable: false
+    description: Full agency name
+    max_null_rate: 0.0
+
+  total_spend:
+    type: decimal
+    nullable: false
+    description: Total spending by agency
+    min_value: 0
+
+  contract_count:
+    type: integer
+    nullable: false
+    description: Number of contracts
+    min_value: 0
+
+  vendor_count:
+    type: integer
+    nullable: false
+    description: Number of unique vendors
+    min_value: 0
+
+  cbe_spend:
+    type: decimal
+    nullable: true
+    description: Spending with CBE vendors
+
+  cbe_spend_pct:
+    type: float
+    nullable: true
+    description: Percentage of spending with CBE vendors
+    min_value: 0
+    max_value: 100
+
+  avg_contract_value:
+    type: decimal
+    nullable: true
+    description: Average contract value
+
+  top_vendor:
+    type: string
+    nullable: true
+    description: Vendor with most spending from this agency
+
+  top_category:
+    type: string
+    nullable: true
+    description: Most common spending category
+
+  fiscal_year:
+    type: integer
+    nullable: false
+    description: Fiscal year for aggregation
+
+  updated_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp of last update

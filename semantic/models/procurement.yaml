@@ -1,0 +1,113 @@
+# Procurement Semantic Model
+# Unified definitions for procurement analytics
+
+name: procurement
+description: DC Government procurement and spending analytics
+
+source_tables:
+  - analytics.fact_spend
+  - analytics.dim_supplier
+  - analytics.dim_contract
+  - analytics.dim_geography
+  - analytics.gold_spend_by_vendor
+
+dimensions:
+  vendor:
+    description: Vendor/supplier receiving payment
+    source_column: vendor_name
+    source_table: dim_supplier
+    data_type: string
+
+  agency:
+    description: DC government agency
+    source_column: agency_name
+    source_table: fact_spend
+    data_type: string
+
+  fiscal_year:
+    description: Fiscal year of transaction
+    source_column: fiscal_year
+    source_table: fact_spend
+    data_type: number
+
+  fiscal_quarter:
+    description: Fiscal quarter (Q1-Q4)
+    source_column: fiscal_quarter
+    source_table: fact_spend
+    data_type: string
+
+  contract_type:
+    description: Type of contract
+    source_column: contract_type
+    source_table: dim_contract
+    data_type: string
+
+  is_cbe:
+    description: Certified Business Enterprise status
+    source_column: is_cbe
+    source_table: dim_supplier
+    data_type: boolean
+
+  cbe_type:
+    description: CBE certification type
+    source_column: cbe_type
+    source_table: dim_supplier
+    data_type: string
+
+  ward:
+    description: DC ward
+    source_column: ward
+    source_table: dim_geography
+    data_type: string
+    hierarchy:
+      - ward
+      - neighborhood
+
+measures:
+  total_spend:
+    description: Total spending amount
+    expression: SUM(amount)
+    aggregation: sum
+    format: currency
+    unit: USD
+
+  contract_count:
+    description: Number of contracts
+    expression: COUNT(DISTINCT contract_id)
+    aggregation: count_distinct
+    format: number
+
+  vendor_count:
+    description: Number of unique vendors
+    expression: COUNT(DISTINCT vendor_id)
+    aggregation: count_distinct
+    format: number
+
+  avg_contract_value:
+    description: Average contract value
+    expression: AVG(contract_value)
+    aggregation: average
+    format: currency
+    unit: USD
+
+  cbe_spend:
+    description: Spending with CBE vendors
+    expression: SUM(CASE WHEN is_cbe THEN amount ELSE 0 END)
+    aggregation: sum
+    format: currency
+    unit: USD
+
+  cbe_spend_pct:
+    description: Percentage of spending with CBE vendors
+    expression: "100.0 * SUM(CASE WHEN is_cbe THEN amount ELSE 0 END) / NULLIF(SUM(amount), 0)"
+    aggregation: calculated
+    format: percent
+
+relationships:
+  - from: fact_spend.vendor_id
+    to: dim_supplier.vendor_id
+    type: many_to_one
+
+  - from: fact_spend.contract_id
+    to: dim_contract.contract_id
+    type: many_to_one

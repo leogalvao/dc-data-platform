@@ -1,0 +1,101 @@
+# Lineage Manifest
+# Defines data flow relationships between datasets
+
+datasets:
+  # Silver layer datasets
+  dc_contracts:
+    layer: silver
+    description: Normalized DC government contracts
+    sources:
+      - dc_arcgis_contracts
+    source_layer: source
+    transformation: Pydantic validation + normalization
+
+  dc_payments:
+    layer: silver
+    description: Normalized DC government payments
+    sources:
+      - dc_arcgis_payments
+    source_layer: source
+    transformation: Pydantic validation + normalization
+
+  dc_cbe_businesses:
+    layer: silver
+    description: Normalized CBE business registry
+    sources:
+      - dc_arcgis_cbe
+    source_layer: source
+    transformation: Pydantic validation + normalization
+
+  dc_residential_cama:
+    layer: silver
+    description: Normalized residential property assessments
+    sources:
+      - dc_arcgis_cama
+    source_layer: source
+    transformation: Pydantic validation + normalization
+
+  # Gold layer datasets
+  spend_by_vendor:
+    layer: gold
+    description: Aggregated spending by vendor
+    sources:
+      - dc_contracts
+      - dc_payments
+      - dc_cbe_businesses
+    source_layer: silver
+    transformation: Aggregation by vendor with CBE enrichment
+
+  property_by_ward:
+    layer: gold
+    description: Property statistics by DC ward
+    sources:
+      - dc_residential_cama
+    source_layer: silver
+    transformation: Aggregation by ward
+
+  agency_spend:
+    layer: gold
+    description: Spending aggregated by agency
+    sources:
+      - dc_contracts
+      - dc_payments
+    source_layer: silver
+    transformation: Aggregation by agency
+
+  # Diamond layer datasets
+  vendor_features:
+    layer: diamond
+    description: ML-ready vendor feature vectors
+    sources:
+      - spend_by_vendor
+      - dc_contracts
+      - dc_payments
+    source_layer: gold
+    transformation: Feature engineering pipeline
+
+  property_features:
+    layer: diamond
+    description: ML-ready property feature vectors
+    sources:
+      - property_by_ward
+      - dc_residential_cama
+    source_layer: gold
+    transformation: Feature engineering pipeline
+
+  # Warehouse tables
+  dim_supplier:
+    layer: warehouse
+    description: Supplier dimension table
+    sources:
+      - spend_by_vendor
+    source_layer: gold
+    transformation: Dimension load
+
+  fact_spend:
+    layer: warehouse
+    description: Spending fact table
+    sources:
+      - dc_payments
+    source_layer: silver
+    transformation: Fact load with dimension keys

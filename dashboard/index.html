@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FACTORY Data Platform - Control Center</title>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-orange: #f97316;
+            --accent-purple: #a855f7;
+            --accent-red: #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--bg-card) 0%, #0f172a 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1.5rem 2rem;
+        }
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { display: flex; align-items: center; gap: 1rem; }
+        .logo-icon {
+            width: 48px; height: 48px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+        }
+        .logo-text h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.05em; }
+        .logo-text span { font-size: 0.75rem; color: var(--text-secondary); }
+        .header-status { display: flex; align-items: center; gap: 2rem; }
+        .status-indicator {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border-radius: 8px;
+            font-size: 0.875rem;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.active { background: var(--accent-green); }
+        .status-dot.running { background: var(--accent-yellow); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .section-title {
+            font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .pipeline-flow {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 1rem; overflow-x: auto; padding: 1rem 0;
+        }
+        .phase-card {
+            flex: 1; min-width: 250px;
+            background: var(--bg-card);
+            border-radius: 16px; padding: 1.5rem;
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease; cursor: pointer;
+        }
+        .phase-card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-4px);
+            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.2);
+        }
+        .phase-card.active { border-color: var(--accent-green); }
+        .phase-card.running {
+            border-color: var(--accent-yellow);
+            animation: glow 1.5s infinite;
+        }
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 10px rgba(234, 179, 8, 0.3); }
+            50% { box-shadow: 0 0 25px rgba(234, 179, 8, 0.5); }
+        }
+        .phase-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+        .phase-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+        }
+        .phase-icon.bronze { background: linear-gradient(135deg, #CD7F32, #8B4513); }
+        .phase-icon.silver { background: linear-gradient(135deg, #C0C0C0, #808080); }
+        .phase-icon.gold { background: linear-gradient(135deg, #FFD700, #FFA500); }
+        .phase-icon.diamond { background: linear-gradient(135deg, #B9F2FF, #87CEEB); }
+        .phase-title h3 { font-size: 1.125rem; font-weight: 600; }
+        .phase-title span { font-size: 0.75rem; color: var(--text-secondary); }
+        .phase-stats {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;
+            margin-top: 1rem; padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.25rem; font-weight: 700; color: var(--accent-blue); }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); }
+        .phase-connector {
+            display: flex; align-items: center;
+            color: var(--accent-blue); font-size: 1.5rem; flex-shrink: 0;
+        }
+        .controls-section {
+            display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin: 2rem 0;
+        }
+        .control-panel {
+            background: var(--bg-card); border-radius: 16px; padding: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+        .panel-title {
+            font-size: 1rem; font-weight: 600; margin-bottom: 1rem;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .button-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .btn {
+            padding: 0.75rem 1.5rem; border-radius: 8px; border: none;
+            font-size: 0.875rem; font-weight: 600; cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .btn-primary { background: var(--accent-blue); color: white; }
+        .btn-primary:hover { background: #2563eb; transform: translateY(-2px); }
+        .btn-success { background: var(--accent-green); color: white; }
+        .btn-secondary {
+            background: var(--bg-card-hover); color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        .console-section {
+            background: var(--bg-card); border-radius: 16px; padding: 1.5rem;
+            border: 1px solid var(--border-color); margin-top: 2rem;
+        }
+        .console-output {
+            background: #0d1117; border-radius: 8px; padding: 1rem;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem;
+            line-height: 1.6; height: 250px; overflow-y: auto;
+        }
+        .console-line { margin-bottom: 0.25rem; }
+        .console-line.info { color: var(--accent-blue); }
+        .console-line.success { color: var(--accent-green); }
+        .console-line.warning { color: var(--accent-yellow); }
+        .console-line.error { color: var(--accent-red); }
+        .console-line.timestamp { color: var(--text-secondary); }
+        .progress-container { margin-top: 1rem; }
+        .progress-bar {
+            height: 8px; background: var(--bg-card-hover);
+            border-radius: 4px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 4px; transition: width 0.3s ease;
+        }
+        .progress-label {
+            display: flex; justify-content: space-between; margin-top: 0.5rem;
+            font-size: 0.75rem; color: var(--text-secondary);
+        }
+        .datasets-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem; margin-top: 1rem;
+        }
+        .dataset-card {
+            background: var(--bg-card); border-radius: 12px; padding: 1.25rem;
+            border: 1px solid var(--border-color);
+        }
+        .dataset-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+        .dataset-name { font-weight: 600; }
+        .dataset-badge {
+            padding: 0.25rem 0.5rem; border-radius: 4px;
+            font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+        }
+        .badge-gold { background: rgba(255, 215, 0, 0.2); color: #FFD700; }
+        .badge-diamond { background: rgba(185, 242, 255, 0.2); color: #87CEEB; }
+        .dataset-meta { font-size: 0.75rem; color: var(--text-secondary); }
+        @media (max-width: 1024px) {
+            .controls-section { grid-template-columns: 1fr; }
+            .pipeline-flow { flex-direction: column; }
+            .phase-connector { transform: rotate(90deg); }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">&#127981;</div>
+                <div class="logo-text">
+                    <h1>FACTORY</h1>
+                    <span>Federated Analytics & Contextual Transformation ORY</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-indicator">
+                    <div class="status-dot active" id="statusDot"></div>
+                    <span id="statusText">System Ready</span>
+                </div>
+                <div class="status-indicator">
+                    <span>&#128202;</span>
+                    <span id="recordCount">22.4M records</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="pipeline-section">
+            <h2 class="section-title">&#128202; Pipeline Phases</h2>
+            <div class="pipeline-flow">
+                <div class="phase-card" id="phase-ingest" onclick="selectPhase('ingest')">
+                    <div class="phase-header">
+                        <div class="phase-icon bronze">&#129353;</div>
+                        <div class="phase-title">
+                            <h3>Phase 1: Ingestion</h3>
+                            <span>Sources &#8594; Bronze &#8594; Silver</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Fetch from 36 sources, validate, normalize
+                    </p>
+                    <div class="phase-stats">
+                        <div class="stat"><div class="stat-value">5.7 GB</div><div class="stat-label">Bronze</div></div>
+                        <div class="stat"><div class="stat-value">3.3 GB</div><div class="stat-label">Silver</div></div>
+                        <div class="stat"><div class="stat-value">36</div><div class="stat-label">Sources</div></div>
+                        <div class="stat"><div class="stat-value">103 MB</div><div class="stat-label">Quarantine</div></div>
+                    </div>
+                </div>
+
+                <div class="phase-connector">&#8594;</div>
+
+                <div class="phase-card" id="phase-gold" onclick="selectPhase('gold')">
+                    <div class="phase-header">
+                        <div class="phase-icon gold">&#129351;</div>
+                        <div class="phase-title">
+                            <h3>Phase 2: Aggregation</h3>
+                            <span>Silver &#8594; Gold</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Business analytics, aggregations, joins
+                    </p>
+                    <div class="phase-stats">
+                        <div class="stat"><div class="stat-value">11 MB</div><div class="stat-label">Gold Size</div></div>
+                        <div class="stat"><div class="stat-value">4</div><div class="stat-label">Datasets</div></div>
+                        <div class="stat"><div class="stat-value">~15K</div><div class="stat-label">Vendors</div></div>
+                        <div class="stat"><div class="stat-value">~50</div><div class="stat-label">Agencies</div></div>
+                    </div>
+                </div>
+
+                <div class="phase-connector">&#8594;</div>
+
+                <div class="phase-card" id="phase-diamond" onclick="selectPhase('diamond')">
+                    <div class="phase-header">
+                        <div class="phase-icon diamond">&#128142;</div>
+                        <div class="phase-title">
+                            <h3>Phase 3: ML Features</h3>
+                            <span>Gold &#8594; Diamond</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Feature engineering, outlier handling
+                    </p>
+                    <div class="phase-stats">
+                        <div class="stat"><div class="stat-value">~2 MB</div><div class="stat-label">Diamond</div></div>
+                        <div class="stat"><div class="stat-value">2</div><div class="stat-label">Feature Sets</div></div>
+                        <div class="stat"><div class="stat-value">21</div><div class="stat-label">Vendor Features</div></div>
+                        <div class="stat"><div class="stat-value">39</div><div class="stat-label">Property Features</div></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="controls-section">
+            <div class="control-panel">
+                <h3 class="panel-title">&#127918; Pipeline Controls</h3>
+                <div class="button-group">
+                    <button class="btn btn-success" onclick="runPipeline('all')">&#9654;&#65039; Run Full Pipeline</button>
+                    <button class="btn btn-primary" onclick="runPipeline('ingest')">&#129353; Run Ingestion</button>
+                    <button class="btn btn-primary" onclick="runPipeline('gold')">&#129351; Build Gold</button>
+                    <button class="btn btn-primary" onclick="runPipeline('diamond')">&#128142; Build Diamond</button>
+                    <button class="btn btn-secondary" onclick="stopPipeline()">&#9209;&#65039; Stop</button>
+                </div>
+                <div style="margin-top: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="incremental" checked>
+                        <span style="font-size: 0.875rem;">Incremental</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="skipIngest">
+                        <span style="font-size: 0.875rem;">Skip Ingestion</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.875rem;">Max Records:</span>
+                        <input type="number" id="maxRecords" placeholder="&#8734;"
+                               style="width: 80px; padding: 0.25rem 0.5rem; background: var(--bg-card-hover);
+                                      border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <h3 class="panel-title">&#128193; Gold Datasets</h3>
+                <div class="datasets-grid" style="grid-template-columns: 1fr;">
+                    <div class="dataset-card">
+                        <div class="dataset-header">
+                            <span class="dataset-name">spend_by_vendor</span>
+                            <span class="dataset-badge badge-gold">Gold</span>
+                        </div>
+                        <div class="dataset-meta">~15K vendors - Vendor spend analysis</div>
+                    </div>
+                    <div class="dataset-card">
+                        <div class="dataset-header">
+                            <span class="dataset-name">vendor_features</span>
+                            <span class="dataset-badge badge-diamond">Diamond</span>
+                        </div>
+                        <div class="dataset-meta">21 features - ML risk prediction</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="console-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 class="panel-title">&#128421;&#65039; Console Output</h3>
+                <button class="btn btn-secondary" onclick="clearConsole()" style="padding: 0.5rem 1rem;">Clear</button>
+            </div>
+            <div class="console-output" id="consoleOutput">
+                <div class="console-line timestamp">[init] FACTORY Dashboard v2.0</div>
+                <div class="console-line success">[init] System ready - 36 sources available</div>
+            </div>
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-label">
+                    <span id="progressPhase">Initializing...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        let isRunning = false;
+
+        function log(msg, type = 'info') {
+            const c = document.getElementById('consoleOutput');
+            const ts = new Date().toISOString().slice(11, 19);
+            const line = document.createElement('div');
+            line.className = `console-line ${type}`;
+            line.textContent = `[${ts}] ${msg}`;
+            c.appendChild(line);
+            c.scrollTop = c.scrollHeight;
+        }
+
+        function clearConsole() {
+            document.getElementById('consoleOutput').innerHTML = '';
+            log('Console cleared', 'info');
+        }
+
+        function selectPhase(phase) {
+            document.querySelectorAll('.phase-card').forEach(c => c.classList.remove('active'));
+            document.getElementById(`phase-${phase}`).classList.add('active');
+            log(`Selected phase: ${phase}`, 'info');
+        }
+
+        function updateStatus(status, text) {
+            document.getElementById('statusDot').className = `status-dot ${status}`;
+            document.getElementById('statusText').textContent = text;
+        }
+
+        function updateProgress(phase, pct) {
+            document.getElementById('progressPhase').textContent = phase;
+            document.getElementById('progressPercent').textContent = `${Math.round(pct)}%`;
+            document.getElementById('progressFill').style.width = `${pct}%`;
+        }
+
+        async function runPipeline(phase) {
+            if (isRunning) { log('Pipeline already running', 'warning'); return; }
+
+            isRunning = true;
+            updateStatus('running', `Running ${phase}...`);
+            document.getElementById('progressContainer').style.display = 'block';
+
+            const phases = phase === 'all' ? ['ingest', 'gold', 'diamond'] : [phase];
+            log(`Starting FACTORY pipeline: ${phases.join(' -> ')}`, 'info');
+
+            for (let i = 0; i < phases.length; i++) {
+                const p = phases[i];
+                document.getElementById(`phase-${p}`).classList.add('running');
+
+                for (let j = 0; j <= 100; j += 20) {
+                    await new Promise(r => setTimeout(r, 300));
+                    updateProgress(`${p.charAt(0).toUpperCase() + p.slice(1)}`, ((i + j/100) / phases.length) * 100);
+                    if (j === 40) log(`Processing ${p}...`, 'info');
+                }
+
+                document.getElementById(`phase-${p}`).classList.remove('running');
+                document.getElementById(`phase-${p}`).classList.add('active');
+                log(`[ok] ${p} complete`, 'success');
+            }
+
+            isRunning = false;
+            document.getElementById('progressContainer').style.display = 'none';
+            updateStatus('active', 'Pipeline Complete');
+            log('FACTORY pipeline completed!', 'success');
+        }
+
+        function stopPipeline() {
+            if (!isRunning) { log('No pipeline running', 'warning'); return; }
+            isRunning = false;
+            document.getElementById('progressContainer').style.display = 'none';
+            updateStatus('active', 'Stopped');
+            document.querySelectorAll('.phase-card').forEach(c => c.classList.remove('running'));
+            log('Pipeline stopped', 'warning');
+        }
+    </script>
+</body>
+</html>

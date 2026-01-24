@@ -1,0 +1,119 @@
+# Full Refresh Pipeline
+# Complete end-to-end data refresh from sources to warehouse
+
+name: full_refresh
+description: Complete pipeline - scrape, build all layers, load warehouse, validate
+enabled: true
+max_parallel: 1
+fail_fast: true
+schedule: "0 6 * * *"  # Daily at 6 AM
+
+tags:
+  - production
+  - full
+  - daily
+
+tasks:
+  scrape_sources:
+    type: scrape
+    config:
+      sources: []  # All sources
+      skip_existing: false
+    timeout_seconds: 7200  # 2 hours
+
+  validate_bronze:
+    type: validate_layer
+    depends_on:
+      - scrape_sources
+    config:
+      layer: bronze
+      fail_on_warning: false
+    timeout_seconds: 300
+
+  build_silver:
+    type: build_silver
+    depends_on:
+      - validate_bronze
+    config:
+      sources: []  # All sources
+      force_rebuild: false
+      validate_contracts: true
+    timeout_seconds: 1800  # 30 minutes
+
+  build_gold:
+    type: build_gold
+    depends_on:
+      - build_silver
+    config:
+      datasets: []  # All datasets
+      force_rebuild: false
+    timeout_seconds: 1800  # 30 minutes
+
+  build_diamond:
+    type: build_diamond
+    depends_on:
+      - build_gold
+    config:
+      datasets: []
+      force_rebuild: false
+    timeout_seconds: 1800
+
+  load_dimensions:
+    type: load_warehouse
+    depends_on:
+      - build_silver
+    config:
+      load_type: dimensions
+      truncate: false
+    timeout_seconds: 600
+
+  load_facts:
+    type: load_warehouse
+    depends_on:
+      - load_dimensions
+    config:
+      load_type: facts
+      truncate: false
+    timeout_seconds: 1800
+
+  load_gold_tables:
+    type: load_warehouse
+    depends_on:
+      - build_gold
+    config:
+      load_type: gold
+      truncate: false
+    timeout_seconds: 600
+
+  load_diamond_tables:
+    type: load_warehouse
+    depends_on:
+      - build_diamond
+    config:
+      load_type: diamond
+      truncate: false
+    timeout_seconds: 600
+
+  refresh_views:
+    type: refresh_views
+    depends_on:
+      - load_facts
+      - load_gold_tables
+      - load_diamond_tables
+    config:
+      concurrent: true
+    timeout_seconds: 300
+
+  quality_checks:
+    type: quality_checks
+    depends_on:
+      - build_gold
+      - build_diamond
+    config:
+      layers:
+        - bronze
+        - silver
+        - gold
+        - diamond
+      fail_on_warning: false
+    timeout_seconds: 600

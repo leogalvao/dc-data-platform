@@ -1,0 +1,455 @@
+# Universal Scraper Framework - Source Configuration
+# Each source defines connection settings, rate limits, and adapter info
+
+# =============================================================================
+# DC Government Data Sources (ArcGIS REST API)
+# =============================================================================
+
+dc_contracts:
+  display_name: "DC Government Contracts"
+  description: "District of Columbia government contracts from DCGIS"
+  source_type: rest_api
+  enabled: true
+
+  # Connection
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Government_Operations/MapServer"
+  requires_auth: false
+
+  # Rate limiting
+  requests_per_second: 2.0
+  rate_limit_wait_seconds: 30
+  max_retries: 3
+  retry_backoff_factor: 2.0
+
+  # Concurrency
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  # Adapter
+  adapter_class: "src.adapters.dc_arcgis.contracts.ContractsAdapter"
+  output_record_types:
+    - ContractRecord
+
+  # Storage partitioning
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  # Source-specific settings
+  extra:
+    mapserver_id: 37
+
+
+dc_purchase_orders:
+  display_name: "DC Purchase Orders"
+  description: "District of Columbia government purchase orders"
+  source_type: rest_api
+  enabled: true
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Government_Operations/MapServer"
+  requires_auth: false
+  requests_per_second: 2.0
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+  adapter_class: "src.adapters.dc_arcgis.contracts.PurchaseOrdersAdapter"
+  output_record_types: [PurchaseOrderRecord]
+  extra:
+    mapserver_id: 16
+
+
+dc_payments:
+  display_name: "DC Payments"
+  description: "District of Columbia government payments"
+  source_type: rest_api
+  enabled: true
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Government_Operations/MapServer"
+  requires_auth: false
+  requests_per_second: 2.0
+  max_workers: 5
+  batch_size: 1000
+  adapter_class: "src.adapters.dc_arcgis.contracts.PaymentsAdapter"
+  output_record_types: [PaymentRecord]
+  extra:
+    mapserver_id: 17
+
+
+dc_opendata:
+  display_name: "DC Open Data"
+  description: "Multiple DC datasets (CBE, CAMA, Business Licenses)"
+  source_type: rest_api
+  enabled: true
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services"
+  requires_auth: false
+  requests_per_second: 1.0
+  max_workers: 3
+  batch_size: 1000
+  adapter_class: "src.adapters.dc_arcgis.contracts.DCOpenDataAdapter"
+  output_record_types: [BusinessRecord, PropertyRecord]
+
+
+dc_affordable_housing:
+  display_name: "DC Affordable Housing"
+  description: "Affordable housing programs and projects"
+  source_type: rest_api
+  enabled: true
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services"
+  requires_auth: false
+  requests_per_second: 1.0
+  max_workers: 3
+  adapter_class: "src.adapters.dc_arcgis.contracts.AffordableHousingAdapter"
+  output_record_types: [PropertyRecord]
+
+
+# =============================================================================
+# DC Property Data Extraction Sources (Cohesive Scraper Map)
+# =============================================================================
+
+dc_itspe_property_land:
+  display_name: "DC ITSPE Property & Land (OTR)"
+  description: "DC Office of Tax and Revenue property tax assessment and sales data (Layer 53)"
+  source_type: rest_api
+  enabled: true
+
+  # Connection
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer"
+  requires_auth: false
+
+  # Rate limiting
+  requests_per_second: 2.0
+  max_retries: 3
+
+  # Concurrency
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  # Adapter
+  adapter_class: "src.adapters.dc_arcgis.itspe_property_land.ITSPEPropertyLandAdapter"
+  output_record_types: [PropertyRecord]
+
+  # Storage partitioning
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  # Source-specific settings
+  extra:
+    layer_id: 53
+    rate_limit_wait: 30
+
+
+dc_residential_cama:
+  display_name: "DC Residential CAMA"
+  description: "DC residential property assessment data (Computer Assisted Mass Appraisal - Layer 25)"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/FeatureServer"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  adapter_class: "src.adapters.dc_arcgis.residential_cama.ResidentialCAMAAdapter"
+  output_record_types: [PropertyRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  extra:
+    layer_id: 25
+    rate_limit_wait: 30
+
+
+dc_location_verifier:
+  display_name: "DC Location Verifier (Citizen Atlas)"
+  description: "DC address lookup API returning SSL, coordinates, and location details"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 100
+  timeout_seconds: 30
+
+  adapter_class: "src.adapters.dc_arcgis.location_verifier.LocationVerifierAdapter"
+  output_record_types: [LocationVerifierRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [source, date]
+
+  extra:
+    find_location_url: "https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx/findLocation2"
+    # addresses: []  # Set programmatically or via API
+
+
+dc_propertyquest_highlights:
+  display_name: "DC PropertyQuest Spatial Highlights"
+  description: "DC GIS spatial queries for zoning, historic, ward, ANC, and flood plain"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/PropertyQuest/MapServer"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 50
+  timeout_seconds: 30
+
+  adapter_class: "src.adapters.dc_arcgis.propertyquest_highlights.PropertyQuestHighlightsAdapter"
+  output_record_types: [PropertyQuestHighlightsRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [source, date]
+
+  extra:
+    layers:
+      historic_district:
+        id: 16
+        return_field: NAME
+      historic_landmark:
+        id: 18
+        return_field: NAME
+      anc:
+        id: 19
+        return_field: SMD_ID
+      flood_plain:
+        id: 23
+        return_field: ZONE_SUBTY
+      zoning:
+        id: 25
+        return_field: ZONING_LABEL
+      ward:
+        id: 35
+        return_field: WARD
+    # locations: []  # Set programmatically: list of (lat, lon) tuples
+
+
+dc_ward_2022:
+  display_name: "DC Ward Boundaries 2022"
+  description: "DC 2022 election Ward boundaries with Census 2020 demographic data (Layer 53)"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Administrative_Other_Boundaries_WebMercator/MapServer"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  adapter_class: "src.adapters.dc_arcgis.ward_2022.Ward2022Adapter"
+  output_record_types: [DemographicRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  extra:
+    layer_id: 53
+    rate_limit_wait: 30
+
+
+dc_tax_lots:
+  display_name: "DC Tax Lots"
+  description: "DC tax lot boundaries and parcel information (Layer 39)"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/FeatureServer"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  adapter_class: "src.adapters.dc_arcgis.tax_lots.TaxLotsAdapter"
+  output_record_types: [PropertyRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  extra:
+    layer_id: 39
+    rate_limit_wait: 30
+
+
+dc_record_lots:
+  display_name: "DC Record Lots"
+  description: "DC record lot boundaries - legal land records (Layer 35)"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/FeatureServer"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  adapter_class: "src.adapters.dc_arcgis.record_lots.RecordLotsAdapter"
+  output_record_types: [PropertyRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  extra:
+    layer_id: 35
+    rate_limit_wait: 30
+
+
+dc_property_sales_cama:
+  display_name: "DC Property Sales (CAMA)"
+  description: "DC property sales records from tax assessment roll (Layer 57)"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/FeatureServer"
+  requires_auth: false
+
+  requests_per_second: 2.0
+  max_retries: 3
+  max_workers: 5
+  batch_size: 1000
+  timeout_seconds: 60
+
+  adapter_class: "src.adapters.dc_arcgis.property_sales_cama.PropertySalesCAMAAdapter"
+  output_record_types: [PropertyRecord]
+
+  bronze_partition_by: [source, date]
+  silver_partition_by: [category, date]
+
+  extra:
+    layer_id: 57
+    rate_limit_wait: 30
+
+
+# =============================================================================
+# Real Estate Data Sources
+# =============================================================================
+
+crossing_dc:
+  display_name: "Crossing DC Apartments"
+  description: "Residential apartment listings from Crossing DC"
+  source_type: web_scrape
+  enabled: true
+
+  base_url: "https://crossingdc.com/"
+  requires_auth: false
+
+  # Be gentle with the website
+  requests_per_second: 0.5
+  max_workers: 1
+  batch_size: 100
+  timeout_seconds: 30
+
+  adapter_class: "src.adapters.real_estate.crossing.CrossingAdapter"
+  output_record_types: [RentalRecord]
+
+  extra:
+    sightmap_api_base: "https://sightmap.com/app/api/v1/sightmaps"
+    property_name: "Crossing DC"
+    city: "Washington"
+    state: "DC"
+
+
+realtor_api:
+  display_name: "Realtor.com (RapidAPI)"
+  description: "Real estate listings via RapidAPI"
+  source_type: rest_api
+  enabled: false  # Requires API key
+
+  base_url: "https://realtor-com-real-estate.p.rapidapi.com"
+  requires_auth: true
+  api_key_env: "RAPIDAPI_KEY"
+
+  requests_per_second: 1.0
+  max_workers: 1
+  batch_size: 100
+
+  adapter_class: "src.adapters.real_estate.crossing.RealtorAdapter"
+  output_record_types: [PropertyRecord]
+
+  extra:
+    search_areas:
+      - city: Washington
+        state: DC
+      - city: Arlington
+        state: VA
+
+
+rentcast_api:
+  display_name: "RentCast API"
+  description: "Rental market statistics and estimates"
+  source_type: rest_api
+  enabled: false  # Requires API key
+
+  base_url: "https://api.rentcast.io/v1"
+  requires_auth: true
+  api_key_env: "RENTCAST_API_KEY"
+
+  requests_per_second: 0.5
+  max_workers: 1
+
+  adapter_class: "src.adapters.real_estate.crossing.RentCastAdapter"
+  output_record_types: [MarketStatsRecord]
+
+
+zillow_research:
+  display_name: "Zillow Research"
+  description: "Zillow public research datasets (ZHVI, ZORI)"
+  source_type: csv_download
+  enabled: true
+
+  base_url: "https://files.zillowstatic.com/research/public_csvs"
+  requires_auth: false
+
+  requests_per_second: 0.5
+  max_workers: 1
+
+  adapter_class: "src.adapters.real_estate.crossing.ZillowResearchAdapter"
+  output_record_types: [MarketStatsRecord]
+
+  extra:
+    dc_metro_names: ["Washington", "Arlington", "Alexandria", "Baltimore"]
+    dc_zip_prefixes: ["200", "201", "202", "203", "204", "205", "206", "207", "208", "220"]
+
+
+# =============================================================================
+# Demographics Data Sources
+# =============================================================================
+
+odn_demographics:
+  display_name: "Open Data Network Demographics"
+  description: "Demographic and economic data from Socrata"
+  source_type: rest_api
+  enabled: true
+
+  base_url: "https://odn.data.socrata.com/api/catalog/v1"
+  requires_auth: false
+
+  requests_per_second: 0.5
+  max_workers: 1
+
+  adapter_class: "src.adapters.demographics.odn.ODNDemographicsAdapter"
+  output_record_types: [DemographicRecord]
+
+  extra:
+    entity_ids:
+      dc_metro: "310M200US47900"
+      dc: "0400000US11"
+      maryland: "0400000US24"
+      virginia: "0400000US51"

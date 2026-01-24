@@ -1,0 +1,93 @@
+# Raw Payload Bronze Layer Base Contract
+# All bronze layer data must conform to this base schema
+name: raw_payload
+version: "1.0"
+description: Base contract for raw payloads from external sources
+owner: data-engineering
+layer: bronze
+
+primary_key:
+  - payload_id
+
+partition_columns:
+  - source
+  - date
+
+tags:
+  - raw-data
+  - ingestion
+  - bronze-layer
+
+sla:
+  freshness_hours: 24
+  min_row_count: 0  # May be empty for some sources
+  max_null_rate: 0.0  # Core fields should never be null
+  max_duplicate_rate: 0.0
+
+columns:
+  payload_id:
+    type: string
+    nullable: false
+    description: Unique identifier for this payload (UUID or hash)
+    primary_key: true
+
+  content_type:
+    type: string
+    nullable: false
+    description: MIME type or format of the payload (json, xml, csv, etc.)
+    allowed_values:
+      - application/json
+      - application/xml
+      - text/csv
+      - text/plain
+      - application/parquet
+
+  content:
+    type: object
+    nullable: false
+    description: Raw payload content (JSON object or string for non-JSON)
+
+  content_hash:
+    type: string
+    nullable: false
+    description: SHA-256 hash of the content for deduplication
+
+  source_name:
+    type: string
+    nullable: false
+    description: Name of the external source system
+
+  source_url:
+    type: string
+    nullable: true
+    description: URL or endpoint from which data was fetched
+
+  scraped_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when the data was scraped/fetched
+
+  run_id:
+    type: string
+    nullable: false
+    description: Pipeline run identifier for lineage tracking
+
+  response_status:
+    type: integer
+    nullable: true
+    description: HTTP status code if applicable
+
+  response_headers:
+    type: object
+    nullable: true
+    description: HTTP response headers if applicable
+
+  record_count:
+    type: integer
+    nullable: true
+    description: Number of records in payload if countable
+
+  byte_size:
+    type: integer
+    nullable: true
+    description: Size of raw payload in bytes

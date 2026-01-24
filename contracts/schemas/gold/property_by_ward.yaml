@@ -1,0 +1,94 @@
+# Property Values by Ward Gold Layer Data Contract
+name: property_by_ward
+version: "1.0"
+description: Aggregated property values and statistics by DC ward
+owner: data-engineering
+layer: gold
+
+primary_key:
+  - ward
+
+tags:
+  - real-estate
+  - property
+  - ward
+  - analytics
+
+sla:
+  freshness_hours: 168  # Weekly
+  min_row_count: 8  # 8 DC wards
+  max_null_rate: 0.1
+  max_duplicate_rate: 0.0
+
+columns:
+  ward:
+    type: string
+    nullable: false
+    description: DC ward number (1-8)
+    primary_key: true
+    allowed_values:
+      - "1"
+      - "2"
+      - "3"
+      - "4"
+      - "5"
+      - "6"
+      - "7"
+      - "8"
+
+  property_count:
+    type: integer
+    nullable: false
+    description: Total number of properties in ward
+    min_value: 0
+
+  total_assessed_value:
+    type: decimal
+    nullable: false
+    description: Total assessed value of all properties
+    min_value: 0
+
+  avg_assessed_value:
+    type: decimal
+    nullable: true
+    description: Average assessed value per property
+
+  median_assessed_value:
+    type: decimal
+    nullable: true
+    description: Median assessed value
+
+  min_assessed_value:
+    type: decimal
+    nullable: true
+    description: Minimum assessed value
+
+  max_assessed_value:
+    type: decimal
+    nullable: true
+    description: Maximum assessed value
+
+  residential_count:
+    type: integer
+    nullable: true
+    description: Number of residential properties
+
+  commercial_count:
+    type: integer
+    nullable: true
+    description: Number of commercial properties
+
+  avg_year_built:
+    type: float
+    nullable: true
+    description: Average year built for properties
+
+  total_square_footage:
+    type: integer
+    nullable: true
+    description: Total square footage in ward
+
+  updated_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp of last update

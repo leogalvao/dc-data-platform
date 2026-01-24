@@ -1,0 +1,187 @@
+{
+  "exported_at": "2026-01-21T05:44:20.562729",
+  "kpis": {
+    "totalContracts": 0,
+    "totalSpend": 479577248912.56,
+    "totalVendors": 75720,
+    "avgPayment": 86899.66,
+    "cbeRate": 100.0,
+    "propertyCount": 0
+  },
+  "monthlySpend": {
+    "labels": [
+      "2025-02",
+      "2025-03",
+      "2025-04",
+      "2025-05",
+      "2025-06",
+      "2025-07",
+      "2025-08",
+      "2025-09",
+      "2025-10",
+      "2025-11",
+      "2025-12",
+      "2026-01"
+    ],
+    "data": [
+      6640.37,
+      12783.44,
+      8848.62,
+      7660.37,
+      7617.89,
+      6955.34,
+      9284.16,
+      13132.01,
+      20704.68,
+      3189.71,
+      4343.2,
+      2193.98
+    ]
+  },
+  "spendByWard": {
+    "labels": [
+      "Unknown"
+    ],
+    "data": [
+      479577.25
+    ]
+  },
+  "agencySpend": {
+    "labels": [
+      "OFFICE OF CONTRACTIN",
+      "DEPARTMENT OF HEALTH",
+      "DEPARTMENT OF HUMAN ",
+      "DEPARTMENT OF HUMAN ",
+      "DISTRICT DEPARTMENT ",
+      "OFFICE OF THE CHIEF ",
+      "DC HEALTH",
+      "DDOT"
+    ],
+    "data": [
+      2152379.28,
+      1475786.65,
+      362833.93,
+      171075.38,
+      117738.62,
+      56270.0,
+      45866.37,
+      44486.5
+    ]
+  },
+  "vendorTiers": {
+    "labels": [
+      "Enterprise (>$10M)",
+      "Large ($1M-$10M)",
+      "Medium ($100K-$1M)",
+      "Small (<$100K)"
+    ],
+    "data": [
+      833537.15,
+      15800.89,
+      3556.5,
+      950.35
+    ]
+  },
+  "topVendors": [
+    {
+      "rank": 1,
+      "name": "COMPUTER AID, INC",
+      "normalized": "COMPUTER AID,",
+      "payments": 257247724361.13,
+      "contracts": 0,
+      "agencies": 40,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 2,
+      "name": "OST, INC.",
+      "normalized": "OST, INC.",
+      "payments": 26220054402.03,
+      "contracts": 0,
+      "agencies": 21,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 3,
+      "name": "AMERIHEALTH DISTRICT OF COLUMB",
+      "normalized": "AMERIHEALTH DISTRICT OF COLUMB",
+      "payments": 22073469588.16,
+      "contracts": 0,
+      "agencies": 2,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 4,
+      "name": "MCN BUILD  INC.",
+      "normalized": "MCN BUILD  INC.",
+      "payments": 12774963896.93,
+      "contracts": 0,
+      "agencies": 3,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 5,
+      "name": "WASH METRO AREA TRANSIT A",
+      "normalized": "WASH METRO AREA TRANSIT A",
+      "payments": 12698748509.22,
+      "contracts": 0,
+      "agencies": 7,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 6,
+      "name": "FORT MYER CONSTRUCTION CORP",
+      "normalized": "FORT MYER CONSTRUCTION",
+      "payments": 11286976639.43,
+      "contracts": 0,
+      "agencies": 4,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 7,
+      "name": "WASH METRO AREA TRANSIT AUTH",
+      "normalized": "WASH METRO AREA TRANSIT AUTH",
+      "payments": 9949588791.14,
+      "contracts": 0,
+      "agencies": 27,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 8,
+      "name": "DC HOUSING AUTHORITY",
+      "normalized": "DC HOUSING AUTHORITY",
+      "payments": 8333005742.45,
+      "contracts": 0,
+      "agencies": 9,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 9,
+      "name": "THRIVE HEALTH PLANS",
+      "normalized": "THRIVE HEALTH PLANS",
+      "payments": 8287454540.78,
+      "contracts": 0,
+      "agencies": 1,
+      "isCbe": false,
+      "tier": "Enterprise"
+    },
+    {
+      "rank": 10,
+      "name": "SECURITY ASSURANCE MANAGEMENT",
+      "normalized": "SECURITY ASSURANCE MANAGEMENT",
+      "payments": 8030580794.83,
+      "contracts": 0,
+      "agencies": 5,
+      "isCbe": false,
+      "tier": "Enterprise"
+    }
+  ]
+}

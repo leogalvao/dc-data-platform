@@ -1,0 +1,75 @@
+# Dataset Freshness SLAs
+# Maximum allowed staleness for each dataset
+
+silver:
+  dc_contracts:
+    max_staleness_hours: 24
+    update_frequency: daily
+    critical: true
+
+  dc_payments:
+    max_staleness_hours: 24
+    update_frequency: daily
+    critical: true
+
+  dc_cbe_businesses:
+    max_staleness_hours: 168  # Weekly
+    update_frequency: weekly
+    critical: false
+
+  dc_residential_cama:
+    max_staleness_hours: 168  # Weekly
+    update_frequency: weekly
+    critical: false
+
+  dc_purchase_orders:
+    max_staleness_hours: 24
+    update_frequency: daily
+    critical: true
+
+  zillow_zhvi_metro:
+    max_staleness_hours: 720  # Monthly
+    update_frequency: monthly
+    critical: false
+
+  zillow_zori_metro:
+    max_staleness_hours: 720  # Monthly
+    update_frequency: monthly
+    critical: false
+
+  rentcast_market_stats:
+    max_staleness_hours: 168  # Weekly
+    update_frequency: weekly
+    critical: false
+
+gold:
+  spend_by_vendor:
+    max_staleness_hours: 24
+    update_frequency: daily
+    critical: true
+
+  property_by_ward:
+    max_staleness_hours: 168
+    update_frequency: weekly
+    critical: false
+
+  agency_spend:
+    max_staleness_hours: 24
+    update_frequency: daily
+    critical: true
+
+  market_trends:
+    max_staleness_hours: 168
+    update_frequency: weekly
+    critical: false
+
+diamond:
+  vendor_features:
+    max_staleness_hours: 168
+    update_frequency: weekly
+    critical: false
+
+  property_features:
+    max_staleness_hours: 168
+    update_frequency: weekly
+    critical: false

@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dc-data-platform"
+version = "1.0.0"
+description = "Unified DC data platform - scraping, transformation, and warehouse loading"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Leo Galvao" }
+]
+keywords = ["data-engineering", "etl", "scraping", "warehouse", "dc-government"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "httpx>=0.27.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyarrow>=15.0",
+    "polars>=0.20",
+    "rich>=13.0",
+    "typer>=0.9",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+warehouse = [
+    "psycopg[binary]>=3.1",
+    "sqlalchemy>=2.0",
+]
+api = [
+    "fastapi>=0.109",
+    "uvicorn>=0.27",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.2",
+    "mypy>=1.8",
+]
+all = [
+    "dc-data-platform[warehouse,api,dev]",
+]
+
+[project.scripts]
+dc-platform = "cli:main"
+dc-warehouse = "warehouse.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/leogalvao/dc-data-platform"
+Repository = "https://github.com/leogalvao/dc-data-platform"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "warehouse", "pipelines", "config", "contracts", "metrics"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "warehouse", "pipelines", "config"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["src", "warehouse", "pipelines"]
+omit = ["tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

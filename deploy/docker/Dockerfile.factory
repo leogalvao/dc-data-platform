@@ -1,0 +1,20 @@
+FROM python:3.11-slim as builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev
+COPY requirements.txt .
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
+
+FROM python:3.11-slim
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app PATH="/opt/venv/bin:$PATH"
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /opt/venv /opt/venv
+RUN groupadd --gid 1000 factory && useradd --uid 1000 --gid factory --create-home factory
+RUN mkdir -p /app/data/{bronze,silver,gold,diamond,quarantine,reports} && chown -R factory:factory /app
+COPY --chown=factory:factory src/ /app/src/
+COPY --chown=factory:factory scripts/ /app/scripts/
+COPY --chown=factory:factory config/ /app/config/
+USER factory
+CMD ["python", "scripts/factory_refresh.py", "--help"]

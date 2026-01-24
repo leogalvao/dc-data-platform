@@ -1,0 +1,102 @@
+# DC ArcGIS Contracts Bronze Layer Contract
+# Extends raw_payload with DC contracts-specific validation
+name: dc_arcgis_contracts
+version: "1.0"
+description: Raw contract data from DC ArcGIS procurement API
+owner: data-engineering
+layer: bronze
+
+primary_key:
+  - payload_id
+
+partition_columns:
+  - source
+  - date
+
+tags:
+  - raw-data
+  - dc-arcgis
+  - contracts
+  - procurement
+
+sla:
+  freshness_hours: 24
+  min_row_count: 1
+  max_null_rate: 0.0
+  max_duplicate_rate: 0.0
+
+columns:
+  payload_id:
+    type: string
+    nullable: false
+    description: Unique identifier for this payload (UUID)
+    primary_key: true
+
+  content_type:
+    type: string
+    nullable: false
+    description: Always JSON for ArcGIS API
+    allowed_values:
+      - application/json
+
+  content:
+    type: object
+    nullable: false
+    description: Raw ArcGIS API response with features array
+
+  content_hash:
+    type: string
+    nullable: false
+    description: SHA-256 hash of the content
+
+  source_name:
+    type: string
+    nullable: false
+    description: Source identifier
+    allowed_values:
+      - dc_arcgis_contracts
+
+  source_url:
+    type: string
+    nullable: false
+    description: ArcGIS REST API endpoint URL
+    pattern: "https://.*arcgis.*"
+
+  scraped_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when data was fetched
+
+  run_id:
+    type: string
+    nullable: false
+    description: Pipeline run identifier
+
+  response_status:
+    type: integer
+    nullable: false
+    description: HTTP status code (should be 200)
+    min_value: 200
+    max_value: 299
+
+  record_count:
+    type: integer
+    nullable: false
+    description: Number of contract records in payload
+    min_value: 0
+
+  # ArcGIS-specific metadata
+  arcgis_exceeded_transfer_limit:
+    type: boolean
+    nullable: true
+    description: Whether ArcGIS transfer limit was exceeded
+
+  arcgis_result_offset:
+    type: integer
+    nullable: true
+    description: Offset used for pagination
+
+  arcgis_result_count:
+    type: integer
+    nullable: true
+    description: Number of records returned in this page

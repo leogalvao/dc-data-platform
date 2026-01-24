@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Data files (keep structure with .gitkeep only)
+data/bronze/
+data/silver/
+data/gold/
+data/diamond/
+data/quarantine/
+data/reports/
+data/reports_archive/
+data/checkpoints/
+data/*.txt
+data/*.py
+!data/**/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/

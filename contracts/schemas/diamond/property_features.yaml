@@ -1,0 +1,155 @@
+# Property Features Diamond Layer Data Contract
+name: property_features
+version: "1.0"
+description: ML-ready feature vectors for property valuation and analysis
+owner: data-science
+layer: diamond
+
+primary_key:
+  - property_id
+
+tags:
+  - ml-features
+  - property
+  - real-estate
+  - valuation
+
+sla:
+  freshness_hours: 168  # Weekly
+  min_row_count: 1000
+  max_null_rate: 0.3
+  max_duplicate_rate: 0.0
+
+columns:
+  property_id:
+    type: string
+    nullable: false
+    description: Unique property identifier (SSL)
+    primary_key: true
+
+  # Location features
+  ward:
+    type: string
+    nullable: false
+    description: DC ward (1-8)
+
+  neighborhood:
+    type: string
+    nullable: true
+    description: Neighborhood name
+
+  latitude:
+    type: float
+    nullable: true
+    description: Property latitude
+
+  longitude:
+    type: float
+    nullable: true
+    description: Property longitude
+
+  # Physical features
+  square_footage:
+    type: integer
+    nullable: true
+    description: Total square footage
+
+  lot_size_sqft:
+    type: integer
+    nullable: true
+    description: Lot size in square feet
+
+  bedrooms:
+    type: integer
+    nullable: true
+    description: Number of bedrooms
+
+  bathrooms:
+    type: float
+    nullable: true
+    description: Number of bathrooms
+
+  stories:
+    type: integer
+    nullable: true
+    description: Number of stories
+
+  year_built:
+    type: integer
+    nullable: true
+    description: Year property was built
+
+  year_renovated:
+    type: integer
+    nullable: true
+    description: Year of last major renovation
+
+  # Valuation features
+  assessed_value:
+    type: decimal
+    nullable: true
+    description: Current assessed value
+
+  assessed_value_change_1y:
+    type: float
+    nullable: true
+    description: 1-year change in assessed value (%)
+
+  assessed_value_change_3y:
+    type: float
+    nullable: true
+    description: 3-year change in assessed value (%)
+
+  price_per_sqft:
+    type: decimal
+    nullable: true
+    description: Assessed value per square foot
+
+  # Market context features
+  ward_avg_price_sqft:
+    type: decimal
+    nullable: true
+    description: Ward average price per sqft
+
+  ward_price_percentile:
+    type: float
+    nullable: true
+    description: Percentile within ward (0-100)
+
+  # Derived features
+  property_age:
+    type: integer
+    nullable: true
+    description: Age of property in years
+
+  years_since_renovation:
+    type: integer
+    nullable: true
+    description: Years since last renovation
+
+  bedroom_ratio:
+    type: float
+    nullable: true
+    description: Bedrooms per 1000 sqft
+
+  # Classification features
+  property_type:
+    type: string
+    nullable: true
+    description: Property type classification
+
+  use_code:
+    type: string
+    nullable: true
+    description: Property use code
+
+  # Metadata
+  feature_version:
+    type: string
+    nullable: false
+    description: Version of feature engineering pipeline
+
+  computed_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when features were computed

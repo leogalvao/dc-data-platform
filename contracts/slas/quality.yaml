@@ -1,0 +1,90 @@
+# Dataset Quality SLAs
+# Quality thresholds for each dataset
+
+defaults:
+  max_null_rate: 0.3
+  max_duplicate_rate: 0.0
+  min_row_count: 1
+
+silver:
+  dc_contracts:
+    max_null_rate: 0.2
+    required_columns:
+      - contract_number
+      - vendor_name
+      - agency
+    min_row_count: 1000
+
+  dc_payments:
+    max_null_rate: 0.15
+    required_columns:
+      - payment_id
+      - vendor_name
+      - amount
+      - payment_date
+    min_row_count: 10000
+
+  dc_cbe_businesses:
+    max_null_rate: 0.3
+    required_columns:
+      - business_id
+      - business_name
+      - certification_type
+    min_row_count: 500
+
+  dc_residential_cama:
+    max_null_rate: 0.25
+    required_columns:
+      - ssl
+      - assessed_value
+    min_row_count: 100000
+
+  dc_purchase_orders:
+    max_null_rate: 0.2
+    required_columns:
+      - po_number
+      - vendor_name
+      - amount
+    min_row_count: 5000
+
+gold:
+  spend_by_vendor:
+    max_null_rate: 0.1
+    required_columns:
+      - vendor_id
+      - vendor_name
+      - total_spend
+      - contract_count
+    min_row_count: 100
+
+  property_by_ward:
+    max_null_rate: 0.05
+    required_columns:
+      - ward
+      - property_count
+      - total_assessed_value
+    min_row_count: 8
+
+  agency_spend:
+    max_null_rate: 0.1
+    required_columns:
+      - agency_code
+      - agency_name
+      - total_spend
+    min_row_count: 10
+
+diamond:
+  vendor_features:
+    max_null_rate: 0.2
+    required_columns:
+      - vendor_id
+      - total_lifetime_spend
+      - contract_count_total
+    min_row_count: 100
+
+  property_features:
+    max_null_rate: 0.3
+    required_columns:
+      - property_id
+      - ward
+    min_row_count: 1000

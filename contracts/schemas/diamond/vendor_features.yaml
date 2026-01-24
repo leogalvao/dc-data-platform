@@ -1,0 +1,130 @@
+# Vendor Features Diamond Layer Data Contract
+name: vendor_features
+version: "1.0"
+description: ML-ready feature vectors for vendor analysis and prediction
+owner: data-science
+layer: diamond
+
+primary_key:
+  - vendor_id
+
+tags:
+  - ml-features
+  - vendor
+  - prediction
+  - analytics
+
+sla:
+  freshness_hours: 168  # Weekly
+  min_row_count: 100
+  max_null_rate: 0.2
+  max_duplicate_rate: 0.0
+
+columns:
+  vendor_id:
+    type: string
+    nullable: false
+    description: Unique vendor identifier
+    primary_key: true
+
+  vendor_name:
+    type: string
+    nullable: false
+    description: Vendor name
+
+  # Spending features
+  total_lifetime_spend:
+    type: decimal
+    nullable: false
+    description: Total spending over all time
+
+  spend_last_12m:
+    type: decimal
+    nullable: true
+    description: Spending in last 12 months
+
+  spend_last_6m:
+    type: decimal
+    nullable: true
+    description: Spending in last 6 months
+
+  spend_trend:
+    type: float
+    nullable: true
+    description: Spending trend coefficient (-1 to 1)
+
+  # Contract features
+  contract_count_total:
+    type: integer
+    nullable: false
+    description: Total number of contracts
+
+  contract_count_active:
+    type: integer
+    nullable: true
+    description: Number of active contracts
+
+  avg_contract_duration_days:
+    type: float
+    nullable: true
+    description: Average contract duration in days
+
+  contract_renewal_rate:
+    type: float
+    nullable: true
+    description: Rate of contract renewals (0 to 1)
+
+  # Agency diversity features
+  agency_count:
+    type: integer
+    nullable: true
+    description: Number of agencies worked with
+
+  agency_concentration:
+    type: float
+    nullable: true
+    description: Herfindahl index of agency concentration
+
+  # CBE features
+  is_cbe:
+    type: boolean
+    nullable: true
+    description: Current CBE certification status
+
+  cbe_years:
+    type: integer
+    nullable: true
+    description: Years of CBE certification
+
+  # Performance features
+  on_time_completion_rate:
+    type: float
+    nullable: true
+    description: Rate of on-time contract completion
+
+  avg_payment_delay_days:
+    type: float
+    nullable: true
+    description: Average days between invoice and payment
+
+  # Category features
+  category_count:
+    type: integer
+    nullable: true
+    description: Number of spending categories
+
+  primary_category:
+    type: string
+    nullable: true
+    description: Most common spending category
+
+  # Metadata
+  feature_version:
+    type: string
+    nullable: false
+    description: Version of feature engineering pipeline
+
+  computed_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when features were computed

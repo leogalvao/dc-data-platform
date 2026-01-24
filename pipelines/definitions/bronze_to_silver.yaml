@@ -1,0 +1,52 @@
+# Bronze to Silver Pipeline
+# Reprocess bronze layer data into silver layer
+# Use this to rebuild silver from existing bronze data
+
+name: bronze_to_silver
+description: Transform bronze layer data to normalized silver records
+enabled: true
+max_parallel: 1
+fail_fast: true
+
+tags:
+  - reprocessing
+  - bronze
+  - silver
+  - transformation
+
+tasks:
+  validate_bronze:
+    type: validate_layer
+    config:
+      layer: bronze
+      fail_on_warning: false
+    timeout_seconds: 300
+
+  build_silver:
+    type: build_silver
+    depends_on:
+      - validate_bronze
+    config:
+      sources: []  # All sources
+      force_rebuild: false
+      validate_contracts: true
+    timeout_seconds: 1800  # 30 minutes
+
+  validate_silver:
+    type: validate_layer
+    depends_on:
+      - build_silver
+    config:
+      layer: silver
+      fail_on_warning: false
+    timeout_seconds: 300
+
+  quality_checks:
+    type: quality_checks
+    depends_on:
+      - validate_silver
+    config:
+      layers:
+        - silver
+      fail_on_warning: false
+    timeout_seconds: 600

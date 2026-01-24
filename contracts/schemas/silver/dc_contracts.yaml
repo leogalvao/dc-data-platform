@@ -1,0 +1,88 @@
+# DC Contracts Silver Layer Data Contract
+name: dc_contracts
+version: "1.0"
+description: DC Government contract records, normalized from ArcGIS API
+owner: data-engineering
+layer: silver
+
+primary_key:
+  - contract_number
+
+partition_columns:
+  - source
+  - date
+
+tags:
+  - procurement
+  - contracts
+  - dc-government
+
+sla:
+  freshness_hours: 24
+  min_row_count: 1000
+  max_null_rate: 0.3
+  max_duplicate_rate: 0.0
+
+columns:
+  contract_number:
+    type: string
+    nullable: false
+    description: Unique contract identifier
+    primary_key: true
+
+  vendor_name:
+    type: string
+    nullable: false
+    description: Name of the vendor/contractor
+    max_null_rate: 0.01
+
+  agency:
+    type: string
+    nullable: false
+    description: DC government agency name
+
+  contract_value:
+    type: decimal
+    nullable: true
+    description: Total contract value in USD
+    min_value: 0
+
+  start_date:
+    type: date
+    nullable: true
+    description: Contract start date
+
+  end_date:
+    type: date
+    nullable: true
+    description: Contract end date
+
+  contract_type:
+    type: string
+    nullable: true
+    description: Type of contract (e.g., services, goods)
+
+  status:
+    type: string
+    nullable: true
+    description: Contract status
+    allowed_values:
+      - active
+      - completed
+      - terminated
+      - pending
+
+  nigp_code:
+    type: string
+    nullable: true
+    description: NIGP commodity code
+
+  source:
+    type: string
+    nullable: false
+    description: Source system identifier
+
+  ingested_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when record was ingested

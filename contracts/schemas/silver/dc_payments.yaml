@@ -1,0 +1,89 @@
+# DC Payments Silver Layer Data Contract
+name: dc_payments
+version: "1.0"
+description: DC Government payment records from checkbook data
+owner: data-engineering
+layer: silver
+
+primary_key:
+  - payment_id
+
+partition_columns:
+  - source
+  - date
+
+tags:
+  - procurement
+  - payments
+  - dc-government
+  - spending
+
+sla:
+  freshness_hours: 24
+  min_row_count: 10000
+  max_null_rate: 0.2
+  max_duplicate_rate: 0.0
+
+columns:
+  payment_id:
+    type: string
+    nullable: false
+    description: Unique payment identifier
+    primary_key: true
+
+  vendor_name:
+    type: string
+    nullable: false
+    description: Name of the vendor receiving payment
+    max_null_rate: 0.01
+
+  agency:
+    type: string
+    nullable: false
+    description: DC government agency making payment
+
+  amount:
+    type: decimal
+    nullable: false
+    description: Payment amount in USD
+    min_value: 0
+
+  payment_date:
+    type: date
+    nullable: false
+    description: Date payment was made
+
+  fiscal_year:
+    type: integer
+    nullable: true
+    description: Fiscal year of payment
+
+  fund:
+    type: string
+    nullable: true
+    description: Fund source for payment
+
+  program:
+    type: string
+    nullable: true
+    description: Program code
+
+  category:
+    type: string
+    nullable: true
+    description: Spending category
+
+  contract_number:
+    type: string
+    nullable: true
+    description: Associated contract number (if applicable)
+
+  source:
+    type: string
+    nullable: false
+    description: Source system identifier
+
+  ingested_at:
+    type: timestamp
+    nullable: false
+    description: Timestamp when record was ingested
