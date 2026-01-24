@@ -17,4 +17,4 @@ COPY --chown=factory:factory src/ /app/src/
 COPY --chown=factory:factory scripts/ /app/scripts/
 COPY --chown=factory:factory config/ /app/config/
 USER factory
-CMD ["python", "scripts/factory_refresh.py", "--help"]
+CMD ["python", "scripts/unified_pipeline.py", "--help"]
