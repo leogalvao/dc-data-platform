@@ -20,47 +20,66 @@ from ...schemas.tabular import PaymentRecord
 from .base import DCArcGISBaseAdapter
 
 # Field mappings - actual API field names from MapServer/17
+# All 21 fields from API metadata query
 FIELD_MAPPINGS = {
+    # Agency info
     "AGENCY_NAME": "agency_name",
     "AGENCY_ACRONYM": "agency_acronym",
     "AGENCYCODE": "agency_code",
+    # Supplier
     "SUPPLIERNAME": "supplier_name",
+    # Payment details
     "PAYMENTAMOUNT": "payment_amount",
     "PAYMENTTYPE": "payment_type",
-    "INVOICENUMBER": "invoice_number",
     "PAYMENTNUMBER": "payment_number",
+    "TRANSACTION_CODE": "transaction_code",
+    "FISCALYEAR": "fiscal_year",
+    # Reference numbers
+    "INVOICENUMBER": "invoice_number",
     "VOUCHERNUMBER": "voucher_number",
     "CONTRACTNUMBER": "contract_number",
     "PONUMBER": "po_number",
+    # Dates
     "PAYMENTDATE": "payment_date",
     "INVOICEDATE": "invoice_date",
     "ESTPAYMENTDATE": "est_payment_date",
-    "FISCALYEAR": "fiscal_year",
-    "TRANSACTION_CODE": "transaction_code",
     "RECORDUPDATEDDATE": "record_updated_date",
     "RECORDCREATED": "record_created_date",
+    "DCS_REC_CRT_DTTM": "dcs_record_created",
+    "DCS_LAST_MOD_DTTM": "dcs_last_modified",
+    # IDs
     "OBJECTID": "source_record_id",
 }
 
-# Fields to request from API
+# Fields to request from API (all 21 fields from MapServer/17 metadata)
 API_FIELDS = [
+    # IDs
     "OBJECTID",
+    # Agency info
     "AGENCY_NAME",
     "AGENCY_ACRONYM",
     "AGENCYCODE",
+    # Supplier
     "SUPPLIERNAME",
+    # Payment details
     "PAYMENTAMOUNT",
     "PAYMENTTYPE",
-    "INVOICENUMBER",
     "PAYMENTNUMBER",
+    "TRANSACTION_CODE",
+    "FISCALYEAR",
+    # Reference numbers
+    "INVOICENUMBER",
     "VOUCHERNUMBER",
     "CONTRACTNUMBER",
     "PONUMBER",
+    # Dates
     "PAYMENTDATE",
     "INVOICEDATE",
     "ESTPAYMENTDATE",
-    "FISCALYEAR",
-    "TRANSACTION_CODE",
+    "RECORDUPDATEDDATE",
+    "RECORDCREATED",
+    "DCS_REC_CRT_DTTM",
+    "DCS_LAST_MOD_DTTM",
 ]
 
 
@@ -174,8 +193,11 @@ class PaymentsAdapter(DCArcGISBaseAdapter):
                 normalized["fiscal_year"] = None
 
         # Date conversions (already converted by base class _convert_esri_dates)
-        date_fields = ["payment_date", "invoice_date", "est_payment_date",
-                       "record_updated_date", "record_created_date"]
+        date_fields = [
+            "payment_date", "invoice_date", "est_payment_date",
+            "record_updated_date", "record_created_date",
+            "dcs_record_created", "dcs_last_modified",
+        ]
         for date_field in date_fields:
             if date_field in normalized and normalized[date_field]:
                 try:
@@ -197,6 +219,7 @@ class PaymentsAdapter(DCArcGISBaseAdapter):
             "agency_acronym", "agency_code", "voucher_number", "contract_number",
             "po_number", "payment_number", "invoice_date", "est_payment_date",
             "transaction_code", "record_updated_date", "record_created_date",
+            "dcs_record_created", "dcs_last_modified",
         ]
         for field_name in extra_field_names:
             if field_name in normalized and normalized[field_name] is not None:

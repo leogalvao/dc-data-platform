@@ -51,8 +51,9 @@ _RE_EXTRACT_NUMBERS = re.compile(r'[\d,]+')
 
 
 # Field mappings - actual API field names from MapServer/16
-# Discovered via API metadata query (differs from legacy scraper which used older field names)
+# All 19 fields from API metadata query
 FIELD_MAPPINGS = {
+    # Core fields
     "AGENCY_NAME": "agency_name",
     "AGENCY_ACRONYM": "agency_acronym",
     "AGENCYCODE": "agency_code",
@@ -60,37 +61,49 @@ FIELD_MAPPINGS = {
     "COMMODITYNAME": "commodity_name",
     "POTITLE": "project_title",
     "CONTRACTNUMBER": "contract_number",
-    "POTOTAL": "po_total",  # Numeric amount, not range string
+    "POTOTAL": "po_total",  # Numeric amount
     "STATUS": "status",
     "FISCALYEAR": "fiscal_year",
-    "ORDEREDDATE": "ordered_date",
-    "CREATEDATE": "create_date",
     "PONUMBER": "po_number",
     "REQUESTER": "requester",
     "REQUISTIONNUMBER": "requisition_number",
     "SUPPLIER": "supplier",
+    # Dates
+    "ORDEREDDATE": "ordered_date",
+    "CREATEDATE": "create_date",
+    "DCS_LAST_MOD_DTTM": "dcs_last_modified",
+    "DCS_REC_CRT_DTTM": "dcs_record_created",
+    # IDs
     "OBJECT_ID": "source_record_id",
 }
 
-# Fields to request from API
+# Fields to request from API (all 19 fields from MapServer/16 metadata)
 API_FIELDS = [
+    # IDs
     "OBJECT_ID",
     "PONUMBER",
+    # Agency info
     "AGENCY_NAME",
     "AGENCY_ACRONYM",
     "AGENCYCODE",
+    # Commodity
     "COMMODITYCODE",
     "COMMODITYNAME",
+    # PO details
     "POTITLE",
     "CONTRACTNUMBER",
     "POTOTAL",
     "STATUS",
     "FISCALYEAR",
-    "ORDEREDDATE",
-    "CREATEDATE",
+    # Requester/Supplier
     "REQUESTER",
     "REQUISTIONNUMBER",
     "SUPPLIER",
+    # Dates
+    "ORDEREDDATE",
+    "CREATEDATE",
+    "DCS_LAST_MOD_DTTM",
+    "DCS_REC_CRT_DTTM",
 ]
 
 
@@ -257,7 +270,8 @@ class PurchaseOrdersAdapter(DCArcGISBaseAdapter):
                 normalized["fiscal_year"] = None
 
         # Date conversions (already converted by base class _convert_esri_dates)
-        for date_field in ["ordered_date", "create_date"]:
+        date_fields = ["ordered_date", "create_date", "dcs_last_modified", "dcs_record_created"]
+        for date_field in date_fields:
             if date_field in normalized and normalized[date_field]:
                 try:
                     if isinstance(normalized[date_field], str):
@@ -277,7 +291,7 @@ class PurchaseOrdersAdapter(DCArcGISBaseAdapter):
         extra_field_names = [
             "agency_acronym", "agency_code", "po_number", "requester",
             "requisition_number", "supplier", "ordered_date", "create_date",
-            "po_total",
+            "po_total", "dcs_last_modified", "dcs_record_created",
         ]
         for field_name in extra_field_names:
             if field_name in normalized and normalized[field_name] is not None:

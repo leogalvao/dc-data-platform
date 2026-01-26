@@ -24,6 +24,7 @@ from .base import DCArcGISBaseAdapter
 # Field mappings - actual API field names from MapServer/37
 # Discovered via API metadata query
 FIELD_MAPPINGS = {
+    # Core fields mapped to ContractRecord schema
     "AGENCY_NAME": "agency_name",
     "AGENCY": "agency_name",  # Fallback alias
     "CONTRACTAMOUNT": "contract_amount",
@@ -35,8 +36,42 @@ FIELD_MAPPINGS = {
     "STARTDATE": "start_date",
     "ENDDATE": "end_date",
     "ROW_ID": "source_record_id",
-    "TITLE": "project_title",  # Store in extra_fields
-    "CONTRACTINGOFFICER": "contracting_officer",  # Store in extra_fields
+    "SUPPLIER": "supplier_name",
+    # URL field
+    "CONTRACT_DETAILS_LINK": "contract_url",
+    # Extra fields (stored in extra_fields)
+    "TITLE": "project_title",
+    "CONTRACTINGOFFICER": "contracting_officer",
+    "AGENCY_ACRONYM": "agency_acronym",
+    "AWARDDATE": "award_date",
+    "COMMODITYCODE": "commodity_code",
+    "COMMODITYDESCRIPTION": "commodity_description",
+    "CURRENTOPTIONPERIOD": "current_option_period",
+    "TOTALOPTIONPERIODS": "total_option_periods",
+    "DESCRIPTION": "description",
+    "CONTRACTTYPEDESCRIPTION": "contract_type_description",
+    "CONTRACTINGOFFICEREMAIL": "contracting_officer_email",
+    "VENDORADDRESS": "vendor_address",
+    "VENDORCITY": "vendor_city",
+    "VENDORSTATE": "vendor_state",
+    "VENDORZIP": "vendor_zip",
+    "PUBLISHEDVERSIONID": "published_version_id",
+    "DOCUMENTVERSION": "document_version",
+    "LASTMODIFIED": "last_modified",
+    "CONTRACTINGSPLST": "contracting_specialist",
+    "CONTRACTINGSPLSTEMAIL": "contracting_specialist_email",
+    "SOURCE": "source",
+    "CONTRACTADMINISTRATORNAME": "contract_administrator_name",
+    "CONTRACTADMINISTRATOREMAIL": "contract_administrator_email",
+    "CONTRACTADMINISTRATORPHONE": "contract_administrator_phone",
+    "CONTRACTOFFICERPHONE": "contracting_officer_phone",
+    "CWINTERNALID": "cw_internal_id",
+    "CORPORATEPHONE": "corporate_phone",
+    "CORPORATEEMAILADDRESS": "corporate_email",
+    "REC_CREATED_DATE": "record_created_date",
+    "REC_UPDATED_DATE": "record_updated_date",
+    "DCS_LAST_MOD_DTTM": "dcs_last_modified",
+    "OBJECTID": "object_id",
 }
 
 # Required fields for validation
@@ -82,12 +117,34 @@ class ContractsAdapter(DCArcGISBaseAdapter):
     # MapServer endpoint for contracts
     MAPSERVER_ID = 37
 
-    # Fields to request from API (actual field names from MapServer metadata)
+    # Fields to request from API (all fields from MapServer/37 metadata)
     FIELDS = ",".join([
-        "ROW_ID", "AGENCY_NAME", "AGENCY", "CONTRACTAMOUNT", "FISCALYEAR",
-        "CONTRACTSTATUS", "MARKETTYPE", "PROCUREMENTMETHODDESCRIPTION",
-        "CONTRACTNUMBER", "STARTDATE", "ENDDATE", "TITLE", "CONTRACTINGOFFICER",
-        "AWARDDATE"
+        # IDs
+        "ROW_ID", "OBJECTID", "CWINTERNALID",
+        # Agency info
+        "AGENCY_NAME", "AGENCY", "AGENCY_ACRONYM",
+        # Contract core
+        "CONTRACTNUMBER", "CONTRACTAMOUNT", "CONTRACTSTATUS", "FISCALYEAR",
+        "MARKETTYPE", "CONTRACTTYPEDESCRIPTION",
+        "PROCUREMENTMETHODDESCRIPTION", "TITLE", "DESCRIPTION",
+        # Dates
+        "STARTDATE", "ENDDATE", "AWARDDATE", "LASTMODIFIED",
+        "REC_CREATED_DATE", "REC_UPDATED_DATE", "DCS_LAST_MOD_DTTM",
+        # Option periods
+        "CURRENTOPTIONPERIOD", "TOTALOPTIONPERIODS",
+        # Commodity
+        "COMMODITYCODE", "COMMODITYDESCRIPTION",
+        # Supplier/Vendor info
+        "SUPPLIER", "VENDORADDRESS", "VENDORCITY", "VENDORSTATE", "VENDORZIP",
+        "CORPORATEPHONE", "CORPORATEEMAILADDRESS",
+        # Contract officers/administrators
+        "CONTRACTINGOFFICER", "CONTRACTINGOFFICEREMAIL", "CONTRACTOFFICERPHONE",
+        "CONTRACTINGSPLST", "CONTRACTINGSPLSTEMAIL",
+        "CONTRACTADMINISTRATORNAME", "CONTRACTADMINISTRATOREMAIL", "CONTRACTADMINISTRATORPHONE",
+        # Document info
+        "PUBLISHEDVERSIONID", "DOCUMENTVERSION", "SOURCE",
+        # URL
+        "CONTRACT_DETAILS_LINK",
     ])
 
     def validate(self, data: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -169,16 +226,30 @@ class ContractsAdapter(DCArcGISBaseAdapter):
             normalized["latitude"] = data["_latitude"]
             normalized["longitude"] = data["_longitude"]
 
-        # Capture extra fields not in mapping
+        # Capture extra fields not in ContractRecord schema
         extra_fields = {}
+        # Fields that are mapped but should go to extra_fields (not in ContractRecord)
+        extra_field_names = [
+            "project_title", "contracting_officer", "agency_acronym", "award_date",
+            "commodity_code", "commodity_description", "current_option_period",
+            "total_option_periods", "description", "contract_type_description",
+            "contracting_officer_email", "vendor_address", "vendor_city",
+            "vendor_state", "vendor_zip", "published_version_id", "document_version",
+            "last_modified", "contracting_specialist", "contracting_specialist_email",
+            "source", "contract_administrator_name", "contract_administrator_email",
+            "contract_administrator_phone", "contracting_officer_phone",
+            "cw_internal_id", "corporate_phone", "corporate_email",
+            "record_created_date", "record_updated_date", "dcs_last_modified",
+            "object_id", "contract_url",
+        ]
+        for field_name in extra_field_names:
+            if field_name in normalized and normalized[field_name] is not None:
+                extra_fields[field_name] = normalized.pop(field_name)
+
+        # Also capture any unmapped API fields
         for key, value in data.items():
-            if key not in FIELD_MAPPINGS and not key.startswith("_"):
+            if key not in FIELD_MAPPINGS and not key.startswith("_") and value is not None:
                 extra_fields[key] = value
-        # Also add mapped fields that aren't in ContractRecord
-        if "project_title" in normalized:
-            extra_fields["project_title"] = normalized.pop("project_title")
-        if "contracting_officer" in normalized:
-            extra_fields["contracting_officer"] = normalized.pop("contracting_officer")
 
         # Create the record
         record = ContractRecord(
