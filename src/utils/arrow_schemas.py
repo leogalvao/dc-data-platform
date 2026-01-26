@@ -93,6 +93,8 @@ def _contract_record_schema() -> Any:
             ("fiscal_year", pa.int32()),
             ("start_date", pa.string()),
             ("end_date", pa.string()),
+            # URL
+            ("contract_url", pa.string()),
             # Geo
             ("latitude", pa.float64()),
             ("longitude", pa.float64()),
