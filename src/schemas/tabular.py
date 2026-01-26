@@ -68,6 +68,9 @@ class ContractRecord(TabularRecord):
     start_date: date | None = Field(default=None)
     end_date: date | None = Field(default=None)
 
+    # URL to contract detail page
+    contract_url: str | None = Field(default=None, description="URL to contract detail page")
+
     # Geo (if available)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)

@@ -229,6 +229,7 @@ class ContractsAdapter(DCArcGISBaseAdapter):
         # Capture extra fields not in ContractRecord schema
         extra_fields = {}
         # Fields that are mapped but should go to extra_fields (not in ContractRecord)
+        # NOTE: contract_url is NOT in this list - it maps to the schema field
         extra_field_names = [
             "project_title", "contracting_officer", "agency_acronym", "award_date",
             "commodity_code", "commodity_description", "current_option_period",
@@ -240,7 +241,7 @@ class ContractsAdapter(DCArcGISBaseAdapter):
             "contract_administrator_phone", "contracting_officer_phone",
             "cw_internal_id", "corporate_phone", "corporate_email",
             "record_created_date", "record_updated_date", "dcs_last_modified",
-            "object_id", "contract_url",
+            "object_id",
         ]
         for field_name in extra_field_names:
             if field_name in normalized and normalized[field_name] is not None:

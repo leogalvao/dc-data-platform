@@ -52,8 +52,16 @@ dev = [
     "ruff>=0.2",
     "mypy>=1.8",
 ]
+ocr = [
+    "playwright>=1.40.0",      # Headless browser for JS pages
+    "pdfplumber>=0.10.0",      # Native PDF text extraction
+    "pytesseract>=0.3.10",     # OCR for scanned PDFs
+    "pdf2image>=1.16.0",       # PDF to image conversion
+    "Pillow>=10.0.0",          # Image processing
+    "nltk>=3.8.0",             # Tokenization
+]
 all = [
-    "dc-data-platform[warehouse,api,dev]",
+    "dc-data-platform[warehouse,api,dev,ocr]",
 ]
 
 [project.scripts]

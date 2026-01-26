@@ -163,3 +163,94 @@ class ContractDescriptionRecord(TextualRecord):
         default_factory=list,
         description="Extracted requirements",
     )
+
+
+class ExtractionMethod(str, Enum):
+    """Method used to extract text from PDF."""
+
+    NATIVE = "native"  # Text extracted directly from PDF
+    OCR = "ocr"  # Text extracted via OCR
+    MIXED = "mixed"  # Some pages native, some OCR
+
+
+class ContractAttachmentRecord(TextualRecord):
+    """Contract attachment (PDF) with extracted and tokenized text."""
+
+    document_type: DocumentType = DocumentType.PDF
+
+    # Parent contract linkage
+    parent_contract_id: str | None = Field(
+        default=None,
+        description="ID of the parent ContractRecord",
+    )
+    parent_contract_number: str | None = Field(
+        default=None,
+        description="Contract number from parent record",
+    )
+
+    # Attachment metadata
+    attachment_url: str | None = Field(
+        default=None,
+        description="URL where attachment was downloaded from",
+    )
+    original_filename: str | None = Field(
+        default=None,
+        description="Original filename of the PDF",
+    )
+    page_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of pages in the PDF",
+    )
+
+    # Extraction info
+    extraction_method: ExtractionMethod = Field(
+        default=ExtractionMethod.NATIVE,
+        description="How text was extracted (native/ocr/mixed)",
+    )
+    ocr_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Average OCR confidence score if OCR was used",
+    )
+    pages_native: int = Field(
+        default=0,
+        ge=0,
+        description="Number of pages with native text extraction",
+    )
+    pages_ocr: int = Field(
+        default=0,
+        ge=0,
+        description="Number of pages requiring OCR",
+    )
+
+    # Tokenization results
+    tokens: list[str] = Field(
+        default_factory=list,
+        description="Word tokens extracted from text",
+    )
+    token_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of tokens",
+    )
+    sentences: list[str] = Field(
+        default_factory=list,
+        description="Sentences extracted from text",
+    )
+    sentence_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of sentences",
+    )
+
+    # N-gram features (optional)
+    bigrams: list[str] = Field(
+        default_factory=list,
+        description="Common bigrams (word pairs)",
+    )
+    trigrams: list[str] = Field(
+        default_factory=list,
+        description="Common trigrams (word triples)",
+    )

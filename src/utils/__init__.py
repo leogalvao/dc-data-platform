@@ -9,6 +9,8 @@ from .console import Console, create_progress_bar
 from .esri_utils import convert_esri_date, convert_esri_geometry
 from .hash_utils import compute_hash, compute_record_hash
 from .http_client import AsyncHTTPClient, HTTPClient
+from .pdf_processor import PDFExtractionResult, PDFProcessor, PageExtractionResult
+from .tokenizer import ContractTokenizer, TokenizationResult
 from .type_coercion import (
     clean_phone,
     clean_zip_code,
@@ -48,4 +50,11 @@ __all__ = [
     "get_arrow_schema",
     "get_schema_for_records",
     "list_available_schemas",
+    # PDF processing
+    "PDFProcessor",
+    "PDFExtractionResult",
+    "PageExtractionResult",
+    # Tokenization
+    "ContractTokenizer",
+    "TokenizationResult",
 ]
