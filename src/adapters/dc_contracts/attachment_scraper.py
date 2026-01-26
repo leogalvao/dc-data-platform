@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from ...core.base_scraper import BaseScraper, ScraperResult
-from ...core.registry import register_scraper
+from ...core.registry import ScraperRegistry, register_scraper
 from ...schemas.base import LineageInfo, RawPayload
 from ...schemas.metadata import RunStatus, SourceConfig, SourceType
 from ...schemas.textual import ContractAttachmentRecord, ExtractionMethod
@@ -139,28 +139,51 @@ class ContractAttachmentAdapter(BaseScraper):
                 self._logger.warning(f"Silver path not found: {silver_path}")
                 return []
 
-            # Read all parquet files
-            table = pq.read_table(silver_path)
-            df = table.to_pandas()
-
-            # Filter to rows with contract_url
-            if "contract_url" not in df.columns:
-                self._logger.warning("contract_url column not found in silver data")
+            # Find all parquet files and read them individually to avoid schema conflicts
+            parquet_files = list(silver_path.glob("**/*.parquet"))
+            if not parquet_files:
+                self._logger.warning("No parquet files found in silver layer")
                 return []
 
-            df_with_url = df[df["contract_url"].notna() & (df["contract_url"] != "")]
+            # Sort by modification time (newest first) and read files with contract_url
+            parquet_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
             contracts = []
-            for _, row in df_with_url.iterrows():
-                contracts.append({
-                    "contract_id": row.get("record_id", row.get("source_record_id")),
-                    "contract_number": row.get("contract_number"),
-                    "contract_url": row["contract_url"],
-                    "agency_name": row.get("agency_name"),
-                    "supplier_name": row.get("supplier_name"),
-                })
+            seen_contract_numbers = set()
+
+            for pq_file in parquet_files:
+                try:
+                    table = pq.read_table(pq_file)
+                    df = table.to_pandas()
+
+                    # Skip files without contract_url
+                    if "contract_url" not in df.columns:
+                        continue
+
+                    df_with_url = df[df["contract_url"].notna() & (df["contract_url"] != "")]
+
+                    for _, row in df_with_url.iterrows():
+                        contract_num = row.get("contract_number")
+                        # Deduplicate by contract number
+                        if contract_num and contract_num in seen_contract_numbers:
+                            continue
+                        if contract_num:
+                            seen_contract_numbers.add(contract_num)
+
+                        contracts.append({
+                            "contract_id": row.get("record_id", row.get("source_record_id")),
+                            "contract_number": contract_num,
+                            "contract_url": row["contract_url"],
+                            "agency_name": row.get("agency_name"),
+                            "supplier_name": row.get("supplier_name"),
+                        })
+
+                except Exception as e:
+                    self._logger.debug(f"Skipping {pq_file.name}: {e}")
+                    continue
 
             self._contracts_cache = contracts
+            self._logger.info(f"Loaded {len(contracts)} contracts with URLs from silver layer")
             return contracts
 
         except Exception as e:
@@ -540,3 +563,17 @@ class ContractAttachmentAdapter(BaseScraper):
             return loop.run_until_complete(self.fetch_async(item))
         finally:
             loop.close()
+
+
+# =============================================================================
+# Config Registration
+# =============================================================================
+
+
+def _register_config():
+    """Register the default config for this scraper."""
+    ScraperRegistry.register_config(get_default_config())
+
+
+# Register on module import
+_register_config()
