@@ -207,15 +207,15 @@ class UnifiedPipeline:
 
             # Collect stats
             total_records = sum(
-                r.records_fetched for r in scraper_results if r.records_fetched
+                r.report.records_validated for r in scraper_results if r.report
             )
-            failed_sources = sum(1 for r in scraper_results if r.status == "failed")
+            failed_sources = sum(1 for r in scraper_results if r.status.value == "failed")
 
             result.records_processed = total_records
             result.details = {
                 "sources_run": len(scraper_results),
                 "sources_failed": failed_sources,
-                "records_fetched": total_records,
+                "records_validated": total_records,
             }
 
             if failed_sources > 0:
