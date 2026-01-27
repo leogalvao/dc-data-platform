@@ -21,6 +21,7 @@ data/quarantine/
 data/reports/
 data/reports_archive/
 data/checkpoints/
+data/crawl/
 data/*.txt
 data/*.py
 !data/**/.gitkeep
