@@ -266,8 +266,24 @@ class DCFacilitiesCrawler(BaseScraper):
             await self._auth_playwright.stop()
             self._auth_playwright = None
 
+    # Pre-configured ProjectTeam cookies (provided by user)
+    PROJECTTEAM_COOKIES = [
+        {"name": "_gcl_au", "value": "1.1.1680652389.1767442638", "domain": "projectteam.com", "path": "/"},
+        {"name": "_ga", "value": "GA1.2.1801179529.1767442638", "domain": "projectteam.com", "path": "/"},
+        {"name": "messagesUtk", "value": "17d6d593e3aa4c3a86304d849b9a8064", "domain": "projectteam.com", "path": "/"},
+        {"name": "hubspotutk", "value": "93b5cf4e919e7ce12d4a2f33a300279b", "domain": "projectteam.com", "path": "/"},
+        {"name": "_gid", "value": "GA1.2.428364250.1769425734", "domain": "projectteam.com", "path": "/"},
+        {"name": "_gcl_gs", "value": "2.1.k1$i1769491934$u57271275", "domain": "projectteam.com", "path": "/"},
+        {"name": "_gac_UA-71552008-1", "value": "1.1769491936.Cj0KCQiAvtzLBhCPARIsALwhxdrleW6WvAFkhtK4iTXroHFAYyS1wUvfkTuRMXLO_pCOqD6wXSqWfU8aAhjbEALw_wcB", "domain": "projectteam.com", "path": "/"},
+        {"name": "_gcl_aw", "value": "GCL.1769491937.Cj0KCQiAvtzLBhCPARIsALwhxdrleW6WvAFkhtK4iTXroHFAYyS1wUvfkTuRMXLO_pCOqD6wXSqWfU8aAhjbEALw_wcB", "domain": "projectteam.com", "path": "/"},
+        {"name": "_ga_ZTW9KPQPZL", "value": "GS2.2.s1769491936$o4$g1$t1769491936$j60$l0$h0", "domain": "projectteam.com", "path": "/"},
+        {"name": "__hstc", "value": "176454330.93b5cf4e919e7ce12d4a2f33a300279b.1767442639282.1769425735382.1769491937160.4", "domain": "projectteam.com", "path": "/"},
+        {"name": "__hssrc", "value": "1", "domain": "projectteam.com", "path": "/"},
+        {"name": "__hssc", "value": "176454330.1.1769491937160", "domain": "projectteam.com", "path": "/"},
+    ]
+
     async def _init_auth_browser(self) -> None:
-        """Initialize Playwright browser using Chrome profile for authenticated sites."""
+        """Initialize Playwright browser with authentication cookies."""
         if self._auth_browser is not None:
             return
 
@@ -276,27 +292,26 @@ class DCFacilitiesCrawler(BaseScraper):
 
             self._auth_playwright = await async_playwright().start()
 
-            # Use persistent context with Chrome profile for saved sessions
-            chrome_profile = CHROME_PROFILE_PATH / "Default"
+            # Launch a fresh browser (works even when Chrome is running)
+            self._auth_browser = await self._auth_playwright.chromium.launch(
+                headless=False,  # Non-headless for manual login if needed
+                args=["--disable-blink-features=AutomationControlled"],
+            )
 
-            if chrome_profile.exists():
-                self._logger.info(f"Using Chrome profile: {chrome_profile}")
-                # Launch with user data directory to get saved sessions
-                self._auth_context = await self._auth_playwright.chromium.launch_persistent_context(
-                    user_data_dir=str(chrome_profile),
-                    headless=False,  # Must be non-headless to use profile properly
-                    channel="chrome",  # Use installed Chrome
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                    ],
-                )
-                self._auth_browser = None  # Persistent context doesn't use separate browser
-            else:
-                self._logger.warning(f"Chrome profile not found at {chrome_profile}, using regular browser")
-                self._auth_browser = await self._auth_playwright.chromium.launch(headless=False)
-                self._auth_context = await self._auth_browser.new_context()
+            self._auth_context = await self._auth_browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1920, "height": 1080},
+            )
 
-            self._logger.info("Authenticated browser initialized with Chrome profile")
+            # Add pre-configured cookies for ProjectTeam
+            await self._auth_context.add_cookies(self.PROJECTTEAM_COOKIES)
+            self._logger.info(f"Added {len(self.PROJECTTEAM_COOKIES)} pre-configured cookies")
+
+            self._logger.info("Authenticated browser initialized")
 
         except ImportError as e:
             raise ImportError(
@@ -411,6 +426,374 @@ class DCFacilitiesCrawler(BaseScraper):
                 await page.close()
 
         return record
+
+    # Patterns to identify drawings (to be excluded)
+    DRAWING_PATTERNS = [
+        r"drawing",
+        r"dwg",
+        r"cad",
+        r"plan[s]?\s*(sheet|set)",
+        r"architectural\s*plan",
+        r"structural\s*plan",
+        r"mep\s*plan",
+        r"civil\s*plan",
+        r"floor\s*plan",
+        r"site\s*plan",
+        r"elevation",
+        r"section\s*view",
+        r"detail\s*sheet",
+        r"[A-Z]\d{3}",  # Drawing numbers like A101, M201
+    ]
+
+    def _is_drawing(self, filename: str, link_text: str = "") -> bool:
+        """Check if a file appears to be a drawing (to be excluded)."""
+        combined = f"{filename} {link_text}".lower()
+        for pattern in self.DRAWING_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return True
+        return False
+
+    async def crawl_projectteam_full(self, seed_url: str, max_depth: int = 3) -> list[CrawlRecord]:
+        """
+        Comprehensively crawl ProjectTeam: ALL projects, ALL tabs, ALL PDFs (except drawings).
+
+        Navigates the complete ProjectTeam structure:
+        1. Main page -> Projects list (ALL projects, no limit)
+        2. Each project -> ALL tabs (RFIs, Submittals, Daily Logs, Documents, etc.)
+        3. Download and OCR ALL PDFs (excluding drawings)
+        """
+        all_records = []
+        await self._init_auth_browser()
+
+        page = await self._auth_context.new_page()
+
+        # Common ProjectTeam tabs/sections to crawl
+        PROJECT_TABS = [
+            "dashboard",
+            "documents",
+            "document",
+            "files",
+            "rfis",
+            "rfi",
+            "submittals",
+            "submittal",
+            "daily-logs",
+            "dailylog",
+            "daily-reports",
+            "punch-list",
+            "punchlist",
+            "change-orders",
+            "changeorder",
+            "pay-applications",
+            "payapp",
+            "meeting-minutes",
+            "meetings",
+            "schedule",
+            "photos",
+            "issues",
+            "correspondence",
+            "transmittals",
+            "contracts",
+            "budget",
+            "costs",
+            "safety",
+            "inspections",
+            "closeout",
+        ]
+
+        try:
+            # Step 1: Navigate to main page
+            self._logger.info("Navigating to ProjectTeam...")
+            response = await page.goto(seed_url, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(3)
+
+            # Check for login
+            page_title = await page.title()
+            current_url = page.url.lower()
+
+            if "login" in page_title.lower() or "login" in current_url:
+                self._logger.info("="*60)
+                self._logger.info("LOGIN REQUIRED - Please log in to ProjectTeam in the browser window!")
+                self._logger.info("You have 10 minutes to complete login...")
+                self._logger.info("="*60)
+                for _ in range(300):  # Wait up to 10 minutes
+                    await asyncio.sleep(2)
+                    current_url = page.url.lower()
+                    page_title = await page.title()
+                    if "login" not in current_url and "login" not in page_title.lower():
+                        self._logger.info("Login successful!")
+                        break
+                else:
+                    self._logger.error("Login timeout")
+                    return all_records
+
+            await asyncio.sleep(2)
+
+            # Record the main page
+            main_record = await self._create_record_from_page(page, seed_url, 0)
+            all_records.append(main_record)
+            self._write_jsonl(main_record)
+
+            # Step 2: Find ALL project links
+            self._logger.info("Finding ALL projects...")
+
+            # Try multiple navigation paths to find projects
+            project_list_urls = [
+                "https://app.projectteam.com/dashboard/project",  # Primary URL from user
+                "https://app.projectteam.com/project",
+                "https://app.projectteam.com/projects",
+                "https://app.projectteam.com/home",
+            ]
+
+            all_project_links = []
+            for plist_url in project_list_urls:
+                try:
+                    await page.goto(plist_url, timeout=60000, wait_until="domcontentloaded")
+                    await asyncio.sleep(3)
+
+                    # Scroll to load all projects (infinite scroll handling)
+                    for _ in range(10):
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await asyncio.sleep(1)
+
+                    # Find project links
+                    links = await page.eval_on_selector_all(
+                        "a[href*='/project/']",
+                        "elements => elements.map(e => ({href: e.href, text: e.innerText}))"
+                    )
+                    all_project_links.extend(links)
+                except Exception:
+                    continue
+
+            # Deduplicate and filter project links
+            seen_projects = set()
+            projects = []
+            for link in all_project_links:
+                href = link.get("href", "")
+                # Match pattern like /project/12345
+                if "/project/" in href:
+                    # Extract project ID
+                    parts = href.split("/project/")
+                    if len(parts) > 1:
+                        project_part = parts[1].split("/")[0].split("?")[0]
+                        if project_part and project_part not in seen_projects:
+                            seen_projects.add(project_part)
+                            projects.append({
+                                "url": f"https://app.projectteam.com/project/{project_part}",
+                                "name": link.get("text", "").strip()[:100],
+                                "id": project_part,
+                            })
+
+            self._logger.info(f"Found {len(projects)} unique projects - crawling ALL")
+
+            # Step 3: Crawl EACH project comprehensively (NO LIMIT)
+            for idx, project in enumerate(projects):
+                project_url = project["url"]
+                project_id = project["id"]
+                project_name = project["name"]
+
+                self._logger.info(f"[{idx+1}/{len(projects)}] Crawling project {project_id}: {project_name[:50]}...")
+
+                try:
+                    await page.goto(project_url, timeout=60000, wait_until="domcontentloaded")
+                    await asyncio.sleep(2)
+
+                    # Record project main page
+                    project_record = await self._create_record_from_page(page, seed_url, 1)
+                    project_record.notes = f"Project: {project_name}"
+                    all_records.append(project_record)
+                    self._write_jsonl(project_record)
+
+                    # Step 4: Navigate ALL tabs for this project
+                    visited_tabs = set()
+                    pdf_urls_to_download = []
+
+                    for tab in PROJECT_TABS:
+                        tab_url = f"{project_url}/{tab}"
+                        if tab_url in visited_tabs:
+                            continue
+                        visited_tabs.add(tab_url)
+
+                        try:
+                            await page.goto(tab_url, timeout=30000, wait_until="domcontentloaded")
+                            await asyncio.sleep(2)
+
+                            # Check if page loaded successfully (not 404)
+                            current = page.url.lower()
+                            if "404" in current or "error" in current or "not-found" in current:
+                                continue
+
+                            # Scroll to load dynamic content
+                            for _ in range(3):
+                                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                                await asyncio.sleep(0.5)
+
+                            # Record the tab page
+                            tab_record = await self._create_record_from_page(page, seed_url, 2)
+                            tab_record.notes = f"Project {project_name} - Tab: {tab}"
+                            all_records.append(tab_record)
+                            self._write_jsonl(tab_record)
+
+                            # Find ALL downloadable links on this tab
+                            links = await page.eval_on_selector_all(
+                                "a[href*='.pdf'], a[href*='/document/'], a[href*='/download'], "
+                                "a[href*='/attachment'], a[href*='/file'], a[href*='download='], "
+                                "button[data-url], [data-download-url]",
+                                """elements => elements.map(e => ({
+                                    href: e.href || e.getAttribute('data-url') || e.getAttribute('data-download-url') || '',
+                                    text: e.innerText || e.getAttribute('title') || ''
+                                }))"""
+                            )
+
+                            for link in links:
+                                pdf_url = link.get("href", "")
+                                link_text = link.get("text", "")
+                                if pdf_url and not self._is_drawing(pdf_url, link_text):
+                                    pdf_urls_to_download.append({
+                                        "url": pdf_url,
+                                        "text": link_text,
+                                        "tab": tab,
+                                    })
+
+                        except Exception as e:
+                            self._logger.debug(f"Tab {tab} not accessible: {e}")
+                            continue
+
+                    # Step 5: Download and process ALL PDFs for this project (excluding drawings)
+                    unique_pdf_urls = list({p["url"]: p for p in pdf_urls_to_download}.values())
+                    self._logger.info(f"  Found {len(unique_pdf_urls)} PDFs (excluding drawings)")
+
+                    for pdf_info in unique_pdf_urls:
+                        pdf_url = pdf_info["url"]
+                        pdf_text = pdf_info["text"]
+                        pdf_tab = pdf_info["tab"]
+
+                        # Double-check not a drawing
+                        if self._is_drawing(pdf_url, pdf_text):
+                            self._logger.debug(f"  Skipping drawing: {pdf_text[:40]}")
+                            continue
+
+                        self._logger.info(f"  Downloading: {pdf_text[:50] or pdf_url[-50:]}...")
+
+                        try:
+                            pdf_record = await self._download_and_process_pdf_authenticated(
+                                pdf_url, seed_url, 3, f"{project_name} / {pdf_tab}"
+                            )
+                            if pdf_record:
+                                pdf_record.notes = f"PDF from {project_name} / {pdf_tab}: {pdf_text[:100]}"
+                                all_records.append(pdf_record)
+                                self._write_jsonl(pdf_record)
+                        except Exception as e:
+                            self._logger.warning(f"  Failed to download PDF: {e}")
+
+                        # Rate limiting between PDFs
+                        await asyncio.sleep(0.5)
+
+                    # Rate limiting between projects
+                    await asyncio.sleep(1)
+
+                except Exception as e:
+                    self._logger.warning(f"Error crawling project {project_id}: {e}")
+                    continue
+
+            self._logger.info(f"ProjectTeam crawl complete: {len(all_records)} records from {len(projects)} projects")
+
+        except Exception as e:
+            self._logger.error(f"ProjectTeam crawl error: {e}")
+
+        finally:
+            await page.close()
+
+        return all_records
+
+    async def _create_record_from_page(
+        self,
+        page,
+        seed_url: str,
+        depth: int,
+    ) -> CrawlRecord:
+        """Create a CrawlRecord from current Playwright page state."""
+        html = await page.content()
+        content = html.encode("utf-8")
+
+        record = CrawlRecord(
+            source_seed=seed_url,
+            crawl_depth=depth,
+            url_requested=page.url,
+            final_url=page.url,
+            fetched_at=datetime.now(timezone.utc),
+            http_status=200,
+            content_type="text/html",
+        )
+
+        await self._process_html(record, content, seed_url)
+        return record
+
+    async def _download_and_process_pdf_authenticated(
+        self,
+        url: str,
+        seed_url: str,
+        depth: int,
+        project_name: str = "",
+    ) -> CrawlRecord | None:
+        """Download PDF via authenticated browser and process with OCR."""
+        record = CrawlRecord(
+            source_seed=seed_url,
+            crawl_depth=depth,
+            url_requested=url,
+            final_url=url,
+            fetched_at=datetime.now(timezone.utc),
+        )
+
+        try:
+            # Use authenticated context for download
+            page = await self._auth_context.new_page()
+
+            try:
+                # Set up download handling
+                async with page.expect_download(timeout=120000) as download_info:
+                    await page.goto(url, timeout=60000)
+
+                download = await download_info.value
+                temp_path = await download.path()
+
+                if temp_path:
+                    # Read the downloaded file
+                    with open(temp_path, "rb") as f:
+                        pdf_bytes = f.read()
+
+                    record.http_status = 200
+                    record.content_type = "application/pdf"
+
+                    # Process PDF with OCR
+                    await self._process_pdf(record, pdf_bytes)
+                    record.notes = f"PDF from project: {project_name}" if project_name else "PDF downloaded via authenticated session"
+
+                    return record
+
+            except Exception as e:
+                # If download fails, try direct fetch
+                response = await page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                if response and response.status == 200:
+                    # Check if it's actually a PDF
+                    content_type = response.headers.get("content-type", "")
+                    if "pdf" in content_type.lower():
+                        body = await response.body()
+                        await self._process_pdf(record, body)
+                        record.http_status = 200
+                        record.content_type = content_type
+                        record.notes = f"PDF from project: {project_name}"
+                        return record
+
+                record.extraction_errors.append(f"Download failed: {e}")
+
+            finally:
+                await page.close()
+
+        except Exception as e:
+            record.extraction_errors.append(f"PDF processing error: {e}")
+
+        return record if record.raw_content else None
 
     def _needs_playwright(self, url: str) -> bool:
         """Check if URL requires Playwright (Cloudflare-protected domain)."""
@@ -1205,6 +1588,12 @@ class DCFacilitiesCrawler(BaseScraper):
                 records = await self.fetch_arcgis_paginated(url, seed_url, depth)
                 all_records.extend(records)
                 # Don't follow links from ArcGIS REST
+                continue
+
+            # Handle ProjectTeam specially - comprehensive crawl
+            if self._needs_auth(url) and "projectteam" in url.lower() and depth == 0:
+                records = await self.crawl_projectteam_full(url, max_depth)
+                all_records.extend(records)
                 continue
 
             # Choose fetch method based on URL type and domain
