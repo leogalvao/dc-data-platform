@@ -78,6 +78,9 @@ DOMAIN_ALLOWLISTS: dict[str, list[str]] = {
 # Domains that are ArcGIS REST endpoints (fetch JSON, not HTML)
 ARCGIS_REST_DOMAINS = {"services.arcgis.com", "maps2.dcgis.dc.gov"}
 
+# Domains that require Playwright (Cloudflare-protected or JS-heavy)
+PLAYWRIGHT_DOMAINS = {"dgs.dc.gov", "dme.dc.gov", "octo.quickbase.com"}
+
 # OCR threshold: if native text extraction yields fewer chars, run OCR
 OCR_CHAR_THRESHOLD = 100
 
@@ -139,6 +142,10 @@ class DCFacilitiesCrawler(BaseScraper):
         self._pdf_processor = None
         self._output_path: Path | None = None
         self._records_written = 0
+        # Playwright browser for Cloudflare-protected pages
+        self._playwright = None
+        self._browser = None
+        self._browser_context = None
 
     # =========================================================================
     # Lifecycle
@@ -164,6 +171,81 @@ class DCFacilitiesCrawler(BaseScraper):
                     "ocr_char_threshold", OCR_CHAR_THRESHOLD
                 ),
             )
+
+    async def _init_browser(self) -> None:
+        """Lazy-init Playwright browser for Cloudflare-protected pages."""
+        if self._browser is not None:
+            return
+
+        try:
+            from playwright.async_api import async_playwright
+            self._playwright = await async_playwright().start()
+
+            # Use non-headless mode for better Cloudflare bypass, or headless with args
+            headless = self.config.extra.get("headless", True)
+            self._browser = await self._playwright.chromium.launch(
+                headless=headless,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ] if headless else [],
+            )
+
+            # Create context with realistic browser fingerprint
+            self._browser_context = await self._browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+                timezone_id="America/New_York",
+                permissions=["geolocation"],
+                java_script_enabled=True,
+            )
+
+            # Add stealth scripts to evade detection
+            await self._browser_context.add_init_script("""
+                // Mask webdriver property
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                // Mask automation properties
+                window.chrome = { runtime: {} };
+                // Mask permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+            """)
+
+            self._logger.info("Playwright browser initialized with stealth mode")
+        except ImportError as e:
+            raise ImportError(
+                "Playwright required for Cloudflare-protected pages. "
+                "Install with: pip install playwright && playwright install chromium"
+            ) from e
+
+    async def _close_browser(self) -> None:
+        """Close Playwright browser."""
+        if self._browser_context:
+            await self._browser_context.close()
+            self._browser_context = None
+        if self._browser:
+            await self._browser.close()
+            self._browser = None
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
+
+    def _needs_playwright(self, url: str) -> bool:
+        """Check if URL requires Playwright (Cloudflare-protected domain)."""
+        domain = self.get_domain(url)
+        return domain in PLAYWRIGHT_DOMAINS
 
     # =========================================================================
     # URL Utilities
@@ -255,6 +337,131 @@ class DCFacilitiesCrawler(BaseScraper):
             headers = {"User-Agent": self.config.extra.get("user_agent", "")}
             self._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
         return self._session
+
+    async def fetch_url_playwright(
+        self,
+        url: str,
+        seed_url: str,
+        depth: int,
+    ) -> CrawlRecord | None:
+        """
+        Fetch URL using Playwright browser (for Cloudflare-protected pages).
+
+        Renders JavaScript and solves Cloudflare challenges automatically.
+        """
+        canonical = self.canonicalize_url(url)
+        if canonical in self._visited:
+            return None
+        self._visited.add(canonical)
+
+        await self._init_browser()
+
+        record = CrawlRecord(
+            source_seed=seed_url,
+            crawl_depth=depth,
+            url_requested=url,
+            final_url=url,
+            fetched_at=datetime.now(timezone.utc),
+        )
+
+        page = None
+        try:
+            page = await self._browser_context.new_page()
+
+            # Navigate with extended timeout for Cloudflare challenge
+            response = await page.goto(
+                url,
+                timeout=self.config.timeout_seconds * 1000,
+                wait_until="domcontentloaded",
+            )
+
+            # Wait for page to render
+            await asyncio.sleep(2)
+
+            # Wait for network to settle (with short timeout)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass  # Timeout is OK, page might have long-polling
+
+            # Get final response status by checking if page loaded successfully
+            final_url = page.url
+            # If we got redirected to an error page, treat as error
+            record.http_status = response.status if response else 200
+            record.final_url = page.url
+            record.content_type = response.headers.get("content-type", "") if response else ""
+
+            # Update visited with final URL
+            final_canonical = self.canonicalize_url(record.final_url)
+            self._visited.add(final_canonical)
+
+            # Get rendered HTML content FIRST before checking status
+            html = await page.content()
+            content = html.encode("utf-8")
+
+            # Check page status and content
+            record.http_status = response.status if response else None
+
+            # Check if this is a "page removed" error (DGS returns 403 for deleted pages)
+            page_title = await page.title()
+            is_removed_page = (
+                "no longer available" in page_title.lower() or
+                "page not found" in page_title.lower() or
+                "404" in page_title
+            )
+
+            if is_removed_page:
+                record.notes = f"Page removed: {page_title}"
+                record.extraction_errors.append(f"Page no longer exists (HTTP {response.status if response else 'unknown'})")
+                # Still process the error page to capture metadata
+                await self._process_html(record, content, seed_url)
+                return record
+
+            if response and response.status in (401, 403):
+                record.notes = f"Access denied: {response.status}"
+                record.extraction_errors.append(f"HTTP {response.status}")
+                return record
+
+            if response and response.status != 200:
+                record.extraction_errors.append(f"HTTP {response.status}")
+                return record
+
+            # Check content type for PDF links that might have been followed
+            ct = record.content_type.lower()
+            if "application/pdf" in ct or self.is_pdf_url(record.final_url):
+                # For PDFs, we need to download via aiohttp since Playwright returns HTML wrapper
+                pdf_bytes = await self._download_pdf_direct(record.final_url)
+                if pdf_bytes:
+                    await self._process_pdf(record, pdf_bytes)
+                else:
+                    record.extraction_errors.append("Failed to download PDF")
+            elif "text/html" in ct or not ct:
+                await self._process_html(record, content, seed_url)
+                record.notes = "Fetched via Playwright (Cloudflare bypass)"
+            else:
+                record.page_type = PageType.OTHER
+                record.notes = f"Unhandled content type via Playwright: {ct}"
+
+        except Exception as e:
+            record.extraction_errors.append(f"Playwright error: {e}")
+            self._logger.warning(f"Playwright fetch failed for {url}: {e}")
+
+        finally:
+            if page:
+                await page.close()
+
+        return record
+
+    async def _download_pdf_direct(self, url: str) -> bytes | None:
+        """Download PDF directly via aiohttp."""
+        session = await self._ensure_session()
+        try:
+            async with session.get(url, allow_redirects=True) as response:
+                if response.status == 200:
+                    return await response.read()
+        except Exception as e:
+            self._logger.warning(f"PDF download failed: {e}")
+        return None
 
     async def fetch_url(
         self,
@@ -621,6 +828,7 @@ class DCFacilitiesCrawler(BaseScraper):
         Crawl from a single seed URL up to max_depth.
 
         Uses BFS to explore links level by level.
+        Uses Playwright for Cloudflare-protected domains.
         """
         all_records = []
         queue: list[tuple[str, int]] = [(seed_url, 0)]  # (url, depth)
@@ -644,8 +852,24 @@ class DCFacilitiesCrawler(BaseScraper):
                 # Don't follow links from ArcGIS REST
                 continue
 
-            # Fetch regular URL
-            record = await self.fetch_url(url, seed_url, depth)
+            # Choose fetch method based on domain
+            if self._needs_playwright(url):
+                # Use Playwright for Cloudflare-protected domains
+                record = await self.fetch_url_playwright(url, seed_url, depth)
+            else:
+                # Try aiohttp first
+                record = await self.fetch_url(url, seed_url, depth)
+
+                # Retry with Playwright if we got a 403 (likely Cloudflare)
+                if record and record.http_status == 403:
+                    self._logger.info(f"Got 403, retrying with Playwright: {url}")
+                    # Remove from visited so Playwright can try
+                    self._visited.discard(canonical)
+                    final_canonical = self.canonicalize_url(record.final_url)
+                    self._visited.discard(final_canonical)
+                    # Retry with Playwright
+                    record = await self.fetch_url_playwright(url, seed_url, depth)
+
             if record is None:
                 continue
 
@@ -751,6 +975,7 @@ class DCFacilitiesCrawler(BaseScraper):
             if self._session:
                 await self._session.close()
                 self._session = None
+            await self._close_browser()
             self.teardown()
 
         return result
