@@ -133,6 +133,30 @@ class CrawlRecord(BaseModel):
         description="Average OCR confidence if OCR was performed",
     )
 
+    # PDF parsed content (for future tokenization)
+    pdf_pages: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Page-by-page content for granular processing. "
+            "Each dict: {page_num, text, char_count, method}"
+        ),
+    )
+    pdf_sections: list[dict[str, str]] | None = Field(
+        default=None,
+        description=(
+            "Extracted sections/headings from PDF. "
+            "Each dict: {heading, content, page_num}"
+        ),
+    )
+    pdf_metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="PDF document metadata (title, author, creation_date, etc.)",
+    )
+    pdf_tables: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Extracted tables from PDF (list of dicts with headers and rows)",
+    )
+
     # ArcGIS REST-specific
     arcgis_service_name: str | None = Field(
         default=None,

@@ -658,7 +658,7 @@ class DCFacilitiesCrawler(BaseScraper):
             record.extraction_errors.append(f"HTML parse error: {e}")
 
     async def _process_pdf(self, record: CrawlRecord, content: bytes) -> None:
-        """Extract text from PDF with OCR fallback."""
+        """Extract text from PDF with OCR fallback and parse structured content."""
         record.page_type = PageType.PDF
         self._init_pdf_processor()
 
@@ -672,6 +672,26 @@ class DCFacilitiesCrawler(BaseScraper):
             record.ocr_confidence = result.average_ocr_confidence
             record.title = record.url_requested.split("/")[-1]
 
+            # Store page-by-page content for granular tokenization
+            record.pdf_pages = [
+                {
+                    "page_num": page.page_number,
+                    "text": page.text,
+                    "char_count": page.char_count,
+                    "method": page.method,
+                }
+                for page in result.pages
+            ]
+
+            # Extract sections/headings from the text
+            record.pdf_sections = self._extract_pdf_sections(result.full_text)
+
+            # Extract PDF metadata
+            record.pdf_metadata = self._extract_pdf_metadata(content)
+
+            # Extract tables if possible
+            record.pdf_tables = self._extract_pdf_tables(content)
+
         except Exception as e:
             record.extraction_errors.append(f"PDF extraction error: {e}")
             # Try OCR-only as fallback
@@ -682,6 +702,116 @@ class DCFacilitiesCrawler(BaseScraper):
                 record.notes = "Native extraction only (OCR failed)"
             except Exception as e2:
                 record.extraction_errors.append(f"Fallback extraction failed: {e2}")
+
+    def _extract_pdf_sections(self, text: str) -> list[dict[str, str]]:
+        """Extract sections/headings from PDF text."""
+        sections = []
+        lines = text.split("\n")
+
+        # Common section header patterns (all caps, numbered, etc.)
+        section_patterns = [
+            r"^([A-Z][A-Z\s]{2,50})$",  # ALL CAPS headers
+            r"^(\d+\.?\s+[A-Z][A-Za-z\s]+)$",  # Numbered sections (1. Introduction)
+            r"^(SECTION\s+\d+[:\s].+)$",  # SECTION 1: ...
+            r"^(ARTICLE\s+\d+[:\s].+)$",  # ARTICLE 1: ...
+            r"^(PART\s+[A-Z0-9]+[:\s].+)$",  # PART A: ...
+        ]
+
+        current_heading = None
+        current_content = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            is_heading = False
+            for pattern in section_patterns:
+                if re.match(pattern, line) and len(line) < 100:
+                    is_heading = True
+                    break
+
+            if is_heading:
+                # Save previous section
+                if current_heading and current_content:
+                    sections.append({
+                        "heading": current_heading,
+                        "content": "\n".join(current_content)[:5000],  # Limit size
+                    })
+                current_heading = line
+                current_content = []
+            else:
+                current_content.append(line)
+
+        # Save last section
+        if current_heading and current_content:
+            sections.append({
+                "heading": current_heading,
+                "content": "\n".join(current_content)[:5000],
+            })
+
+        return sections[:100]  # Limit number of sections
+
+    def _extract_pdf_metadata(self, content: bytes) -> dict[str, Any] | None:
+        """Extract PDF document metadata."""
+        try:
+            import io
+            pdfplumber = self._pdf_processor._lazy_import_pdfplumber()
+
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                metadata = pdf.metadata or {}
+                return {
+                    "title": metadata.get("Title"),
+                    "author": metadata.get("Author"),
+                    "subject": metadata.get("Subject"),
+                    "creator": metadata.get("Creator"),
+                    "producer": metadata.get("Producer"),
+                    "creation_date": metadata.get("CreationDate"),
+                    "mod_date": metadata.get("ModDate"),
+                    "page_count": len(pdf.pages),
+                }
+        except Exception as e:
+            self._logger.debug(f"Failed to extract PDF metadata: {e}")
+            return None
+
+    def _extract_pdf_tables(self, content: bytes) -> list[dict[str, Any]] | None:
+        """Extract tables from PDF."""
+        try:
+            import io
+            pdfplumber = self._pdf_processor._lazy_import_pdfplumber()
+
+            tables = []
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                for page_num, page in enumerate(pdf.pages[:20], start=1):  # Limit pages
+                    page_tables = page.extract_tables()
+                    for table_idx, table in enumerate(page_tables or []):
+                        if not table or len(table) < 2:
+                            continue
+
+                        # First row as headers
+                        headers = [str(cell or "").strip() for cell in table[0]]
+                        rows = [
+                            [str(cell or "").strip() for cell in row]
+                            for row in table[1:]
+                        ]
+
+                        tables.append({
+                            "page_num": page_num,
+                            "table_index": table_idx,
+                            "headers": headers,
+                            "rows": rows[:100],  # Limit rows
+                            "row_count": len(rows),
+                        })
+
+                        if len(tables) >= 50:  # Limit total tables
+                            break
+                    if len(tables) >= 50:
+                        break
+
+            return tables if tables else None
+        except Exception as e:
+            self._logger.debug(f"Failed to extract PDF tables: {e}")
+            return None
 
     async def _process_json(
         self,
