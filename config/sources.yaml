@@ -429,6 +429,55 @@ zillow_research:
 
 
 # =============================================================================
+# DC Facilities Web Crawler (Depth-limited, PDF OCR, Raw Only)
+# =============================================================================
+
+dc_facilities_crawler:
+  display_name: "DC Facilities Web Crawler"
+  description: |
+    Depth-limited recursive crawler for DGS, DCPS, DC GIS, Quickbase pages.
+    Crawls up to depth 3, extracts raw text and PDFs with OCR fallback.
+    Stores ONLY raw data + metadata (no tokenization/chunking/embedding).
+    Output: JSONL with one CrawlRecord per fetch.
+  source_type: web_scrape
+  enabled: true
+
+  # No single base_url - uses SEED_URLS list in adapter
+  base_url: ""
+  requires_auth: false
+
+  # Rate limiting - be gentle
+  requests_per_second: 1.0
+  rate_limit_wait_seconds: 60
+  max_retries: 3
+  retry_backoff_factor: 2.0
+
+  # Concurrency
+  max_workers: 3
+  batch_size: 50
+  timeout_seconds: 60
+
+  # Adapter
+  adapter_class: "src.adapters.dc_facilities.web_crawler.DCFacilitiesCrawler"
+  output_record_types:
+    - CrawlRecord
+
+  # Storage - JSONL output, no parquet partitioning
+  bronze_partition_by: []
+  silver_partition_by: []
+
+  # Source-specific settings
+  extra:
+    max_depth: 3
+    ocr_char_threshold: 100
+    headless: true
+    output_dir: "data/crawl/dc_facilities"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 DCDataPlatform/1.0"
+    # Seed URLs are defined in SEED_URLS constant in the adapter module
+    # Do not duplicate here - append new seeds to the adapter's SEED_URLS list only
+
+
+# =============================================================================
 # Demographics Data Sources
 # =============================================================================
 

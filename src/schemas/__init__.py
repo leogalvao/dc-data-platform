@@ -12,6 +12,7 @@ from .tabular import (
     TabularRecord,
 )
 from .textual import DocumentRecord, TextualRecord
+from .crawl import CrawlRecord, PageType
 
 __all__ = [
     # Base
@@ -29,6 +30,9 @@ __all__ = [
     # Textual
     "TextualRecord",
     "DocumentRecord",
+    # Crawl
+    "CrawlRecord",
+    "PageType",
     # Metadata
     "RunMetadata",
     "SourceConfig",

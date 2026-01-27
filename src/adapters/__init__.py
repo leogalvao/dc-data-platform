@@ -13,6 +13,9 @@ from .dc_arcgis import (
 # DC Contracts adapters
 from .dc_contracts import ContractAttachmentAdapter
 
+# DC Facilities crawler
+from .dc_facilities import DCFacilitiesCrawler
+
 # Demographics adapters
 from .demographics import ODNDemographicsAdapter
 
@@ -51,6 +54,8 @@ __all__ = [
     "AffordableHousingAdapter",
     # DC Contracts
     "ContractAttachmentAdapter",
+    # DC Facilities
+    "DCFacilitiesCrawler",
     # Real estate
     "CrossingAdapter",
     "RealtorBaseAdapter",
