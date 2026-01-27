@@ -463,6 +463,61 @@ class DCFacilitiesCrawler(BaseScraper):
             self._logger.warning(f"PDF download failed: {e}")
         return None
 
+    async def fetch_pdf_direct(
+        self,
+        url: str,
+        seed_url: str,
+        depth: int,
+    ) -> CrawlRecord | None:
+        """
+        Fetch PDF directly via aiohttp (bypasses Playwright which triggers downloads).
+
+        Downloads the PDF bytes and extracts text with OCR fallback.
+        """
+        canonical = self.canonicalize_url(url)
+        if canonical in self._visited:
+            return None
+        self._visited.add(canonical)
+
+        session = await self._ensure_session()
+        record = CrawlRecord(
+            source_seed=seed_url,
+            crawl_depth=depth,
+            url_requested=url,
+            final_url=url,
+            fetched_at=datetime.now(timezone.utc),
+        )
+
+        try:
+            async with session.get(url, allow_redirects=True) as response:
+                record.http_status = response.status
+                record.final_url = str(response.url)
+                record.content_type = response.headers.get("Content-Type", "")
+
+                # Update visited with final URL
+                final_canonical = self.canonicalize_url(record.final_url)
+                self._visited.add(final_canonical)
+
+                if response.status != 200:
+                    record.extraction_errors.append(f"HTTP {response.status}")
+                    return record
+
+                content = await response.read()
+
+                # Process as PDF
+                await self._process_pdf(record, content)
+                record.notes = "PDF downloaded directly (bypassed Playwright)"
+
+        except asyncio.TimeoutError:
+            record.extraction_errors.append("Timeout downloading PDF")
+        except aiohttp.ClientError as e:
+            record.extraction_errors.append(f"Download error: {e}")
+        except Exception as e:
+            record.extraction_errors.append(f"Unexpected error: {e}")
+            self._logger.exception(f"Error fetching PDF {url}")
+
+        return record
+
     async def fetch_url(
         self,
         url: str,
@@ -852,16 +907,19 @@ class DCFacilitiesCrawler(BaseScraper):
                 # Don't follow links from ArcGIS REST
                 continue
 
-            # Choose fetch method based on domain
-            if self._needs_playwright(url):
-                # Use Playwright for Cloudflare-protected domains
+            # Choose fetch method based on URL type and domain
+            # PDFs should always use direct download (Playwright triggers download dialog)
+            if self.is_pdf_url(url):
+                record = await self.fetch_pdf_direct(url, seed_url, depth)
+            elif self._needs_playwright(url):
+                # Use Playwright for JS-heavy domains
                 record = await self.fetch_url_playwright(url, seed_url, depth)
             else:
                 # Try aiohttp first
                 record = await self.fetch_url(url, seed_url, depth)
 
-                # Retry with Playwright if we got a 403 (likely Cloudflare)
-                if record and record.http_status == 403:
+                # Retry with Playwright if we got a 403 (might be JS-required)
+                if record and record.http_status == 403 and not self.is_pdf_url(record.final_url):
                     self._logger.info(f"Got 403, retrying with Playwright: {url}")
                     # Remove from visited so Playwright can try
                     self._visited.discard(canonical)
