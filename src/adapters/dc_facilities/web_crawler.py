@@ -50,6 +50,8 @@ SEED_URLS: list[str] = [
     "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Administrative_Other_Boundaries_WebMercator/MapServer/53",
     "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/DC_Basemap_LightGray_WebMercator/MapServer",
     "https://octo.quickbase.com/db/bpizdhed2?a=showpage&pageid=51&ifv=20",
+    # ProjectTeam - requires authentication (uses browser session)
+    "https://app.projectteam.com/",
 ]
 
 
@@ -73,6 +75,8 @@ DOMAIN_ALLOWLISTS: dict[str, list[str]] = {
     "octo.quickbase.com": ["/db/"],
     # SharePoint: allow the specific site
     "dck12.sharepoint.com": ["/sites/TESTdcps/"],
+    # ProjectTeam: construction project management (requires auth)
+    "app.projectteam.com": [],  # Allow all paths
 }
 
 # Domains that are ArcGIS REST endpoints (fetch JSON, not HTML)
@@ -80,6 +84,12 @@ ARCGIS_REST_DOMAINS = {"services.arcgis.com", "maps2.dcgis.dc.gov"}
 
 # Domains that require Playwright (Cloudflare-protected or JS-heavy)
 PLAYWRIGHT_DOMAINS = {"dgs.dc.gov", "dme.dc.gov", "octo.quickbase.com"}
+
+# Domains that require authentication (use Chrome profile with saved session)
+AUTH_DOMAINS = {"app.projectteam.com"}
+
+# Chrome profile path for authenticated sessions
+CHROME_PROFILE_PATH = Path.home() / ".config" / "google-chrome"
 
 # OCR threshold: if native text extraction yields fewer chars, run OCR
 OCR_CHAR_THRESHOLD = 100
@@ -146,6 +156,10 @@ class DCFacilitiesCrawler(BaseScraper):
         self._playwright = None
         self._browser = None
         self._browser_context = None
+        # Authenticated browser using Chrome profile
+        self._auth_playwright = None
+        self._auth_browser = None
+        self._auth_context = None
 
     # =========================================================================
     # Lifecycle
@@ -241,6 +255,162 @@ class DCFacilitiesCrawler(BaseScraper):
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
+        # Close authenticated browser
+        if self._auth_context:
+            await self._auth_context.close()
+            self._auth_context = None
+        if self._auth_browser:
+            await self._auth_browser.close()
+            self._auth_browser = None
+        if self._auth_playwright:
+            await self._auth_playwright.stop()
+            self._auth_playwright = None
+
+    async def _init_auth_browser(self) -> None:
+        """Initialize Playwright browser using Chrome profile for authenticated sites."""
+        if self._auth_browser is not None:
+            return
+
+        try:
+            from playwright.async_api import async_playwright
+
+            self._auth_playwright = await async_playwright().start()
+
+            # Use persistent context with Chrome profile for saved sessions
+            chrome_profile = CHROME_PROFILE_PATH / "Default"
+
+            if chrome_profile.exists():
+                self._logger.info(f"Using Chrome profile: {chrome_profile}")
+                # Launch with user data directory to get saved sessions
+                self._auth_context = await self._auth_playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(chrome_profile),
+                    headless=False,  # Must be non-headless to use profile properly
+                    channel="chrome",  # Use installed Chrome
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                    ],
+                )
+                self._auth_browser = None  # Persistent context doesn't use separate browser
+            else:
+                self._logger.warning(f"Chrome profile not found at {chrome_profile}, using regular browser")
+                self._auth_browser = await self._auth_playwright.chromium.launch(headless=False)
+                self._auth_context = await self._auth_browser.new_context()
+
+            self._logger.info("Authenticated browser initialized with Chrome profile")
+
+        except ImportError as e:
+            raise ImportError(
+                "Playwright required. Install with: pip install playwright && playwright install chromium"
+            ) from e
+
+    def _needs_auth(self, url: str) -> bool:
+        """Check if URL requires authentication (Chrome profile)."""
+        domain = self.get_domain(url)
+        return domain in AUTH_DOMAINS
+
+    async def fetch_url_authenticated(
+        self,
+        url: str,
+        seed_url: str,
+        depth: int,
+    ) -> CrawlRecord | None:
+        """
+        Fetch URL using authenticated browser (Chrome profile with saved session).
+
+        Used for sites like ProjectTeam that require login.
+        """
+        canonical = self.canonicalize_url(url)
+        if canonical in self._visited:
+            return None
+        self._visited.add(canonical)
+
+        await self._init_auth_browser()
+
+        record = CrawlRecord(
+            source_seed=seed_url,
+            crawl_depth=depth,
+            url_requested=url,
+            final_url=url,
+            fetched_at=datetime.now(timezone.utc),
+        )
+
+        page = None
+        try:
+            page = await self._auth_context.new_page()
+
+            # Navigate to the page
+            response = await page.goto(
+                url,
+                timeout=self.config.timeout_seconds * 1000,
+                wait_until="domcontentloaded",
+            )
+
+            # Wait for page to load
+            await asyncio.sleep(3)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+
+            # Get page content
+            html = await page.content()
+            content = html.encode("utf-8")
+
+            record.http_status = response.status if response else None
+            record.final_url = page.url
+            record.content_type = response.headers.get("content-type", "") if response else "text/html"
+
+            # Update visited with final URL
+            final_canonical = self.canonicalize_url(record.final_url)
+            self._visited.add(final_canonical)
+
+            # Check if we got redirected to login page
+            page_title = await page.title()
+            current_url = page.url.lower()
+            if "login" in page_title.lower() or "sign in" in page_title.lower() or "login" in current_url:
+                self._logger.info("Login page detected - waiting for manual login...")
+                record.notes = "Login required - waiting for user to authenticate"
+
+                # Wait for user to log in (check every 2 seconds for up to 2 minutes)
+                for _ in range(60):
+                    await asyncio.sleep(2)
+                    current_url = page.url.lower()
+                    page_title = await page.title()
+                    if "login" not in current_url and "login" not in page_title.lower() and "sign in" not in page_title.lower():
+                        self._logger.info("Login successful, continuing crawl...")
+                        # Refresh content after login
+                        html = await page.content()
+                        content = html.encode("utf-8")
+                        record.final_url = page.url
+                        record.notes = "Logged in via manual authentication"
+                        break
+                else:
+                    record.extraction_errors.append("Login timeout - user did not authenticate within 2 minutes")
+                    return record
+
+            # Check for auth errors
+            if response and response.status in (401, 403):
+                record.notes = f"Access denied: {response.status}"
+                record.extraction_errors.append(f"HTTP {response.status}")
+                return record
+
+            if response and response.status != 200:
+                record.extraction_errors.append(f"HTTP {response.status}")
+                return record
+
+            # Process HTML content
+            await self._process_html(record, content, seed_url)
+            record.notes = "Fetched via authenticated browser (Chrome profile)"
+
+        except Exception as e:
+            record.extraction_errors.append(f"Auth browser error: {e}")
+            self._logger.warning(f"Authenticated fetch failed for {url}: {e}")
+
+        finally:
+            if page:
+                await page.close()
+
+        return record
 
     def _needs_playwright(self, url: str) -> bool:
         """Check if URL requires Playwright (Cloudflare-protected domain)."""
@@ -1041,6 +1211,9 @@ class DCFacilitiesCrawler(BaseScraper):
             # PDFs should always use direct download (Playwright triggers download dialog)
             if self.is_pdf_url(url):
                 record = await self.fetch_pdf_direct(url, seed_url, depth)
+            elif self._needs_auth(url):
+                # Use authenticated browser (Chrome profile) for auth-required sites
+                record = await self.fetch_url_authenticated(url, seed_url, depth)
             elif self._needs_playwright(url):
                 # Use Playwright for JS-heavy domains
                 record = await self.fetch_url_playwright(url, seed_url, depth)
