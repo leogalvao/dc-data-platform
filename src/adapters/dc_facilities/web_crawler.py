@@ -1711,6 +1711,7 @@ class DCFacilitiesCrawler(BaseScraper):
         self,
         seed_url: str,
         max_depth: int = 3,
+        max_records: int | None = None,
     ) -> list[CrawlRecord]:
         """
         Crawl from a single seed URL up to max_depth.
@@ -1722,6 +1723,10 @@ class DCFacilitiesCrawler(BaseScraper):
         queue: list[tuple[str, int]] = [(seed_url, 0)]  # (url, depth)
 
         while queue:
+            # Check max_records limit
+            if max_records and len(all_records) >= max_records:
+                self._logger.info(f"Reached max_records limit ({max_records})")
+                break
             url, depth = queue.pop(0)
 
             if depth > max_depth:
@@ -1774,6 +1779,9 @@ class DCFacilitiesCrawler(BaseScraper):
                 continue
 
             all_records.append(record)
+            # Write immediately for streaming progress
+            self._write_jsonl(record)
+            self._logger.debug(f"Recorded: {url[:60]} (depth={depth})")
 
             # Enqueue child links if within depth limit
             if depth < max_depth:
@@ -1838,16 +1846,18 @@ class DCFacilitiesCrawler(BaseScraper):
                 result.discovered_count += 1
 
                 try:
-                    records = await self.crawl_seed(seed_url, max_depth)
-
-                    for record in records:
-                        # Write to JSONL (raw storage)
-                        self._write_jsonl(record)
-                        result.parsed_count += 1
-                        result.validated_count += 1
-
-                        if max_records and result.validated_count >= max_records:
+                    # Calculate remaining records allowed for this seed
+                    remaining = None
+                    if max_records:
+                        remaining = max_records - result.validated_count
+                        if remaining <= 0:
                             break
+
+                    records = await self.crawl_seed(seed_url, max_depth, max_records=remaining)
+
+                    # Records are already written to JSONL in crawl_seed
+                    result.parsed_count += len(records)
+                    result.validated_count += len(records)
 
                 except Exception as e:
                     self._logger.error(f"Error crawling seed {seed_url}: {e}")
