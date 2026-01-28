@@ -463,42 +463,50 @@ class DCFacilitiesCrawler(BaseScraper):
         3. Download and OCR ALL PDFs (excluding drawings)
         """
         all_records = []
+        pt_visited: set[str] = set()  # Track visited URLs within this crawl
         await self._init_auth_browser()
 
         page = await self._auth_context.new_page()
 
-        # Common ProjectTeam tabs/sections to crawl
-        PROJECT_TABS = [
-            "dashboard",
-            "documents",
-            "document",
-            "files",
-            "rfis",
-            "rfi",
-            "submittals",
-            "submittal",
-            "daily-logs",
-            "dailylog",
-            "daily-reports",
-            "punch-list",
-            "punchlist",
-            "change-orders",
-            "changeorder",
-            "pay-applications",
-            "payapp",
-            "meeting-minutes",
-            "meetings",
-            "schedule",
-            "photos",
-            "issues",
-            "correspondence",
-            "transmittals",
-            "contracts",
-            "budget",
-            "costs",
-            "safety",
-            "inspections",
-            "closeout",
+        # ProjectTeam URL structure: /project/{id}/{section}/{subsection}
+        # Based on observed patterns like /project/6858/home/dashboard
+        PROJECT_SECTIONS = [
+            # (section, subsection) tuples
+            ("home", "dashboard"),
+            ("general", "view"),
+            ("general", "info"),
+            ("documents", "list"),
+            ("documents", "all"),
+            ("files", "list"),
+            ("rfi", "list"),
+            ("rfi", "all"),
+            ("rfis", "list"),
+            ("submittal", "list"),
+            ("submittal", "all"),
+            ("submittals", "list"),
+            ("daily-log", "list"),
+            ("daily-logs", "list"),
+            ("dailylog", "list"),
+            ("punch-list", "list"),
+            ("punchlist", "list"),
+            ("change-order", "list"),
+            ("change-orders", "list"),
+            ("pay-app", "list"),
+            ("pay-applications", "list"),
+            ("meeting", "list"),
+            ("meetings", "list"),
+            ("schedule", "view"),
+            ("photos", "list"),
+            ("issues", "list"),
+            ("correspondence", "list"),
+            ("transmittal", "list"),
+            ("transmittals", "list"),
+            ("contracts", "list"),
+            ("budget", "view"),
+            ("costs", "list"),
+            ("safety", "list"),
+            ("inspections", "list"),
+            ("closeout", "list"),
         ]
 
         try:
@@ -530,9 +538,12 @@ class DCFacilitiesCrawler(BaseScraper):
             await asyncio.sleep(2)
 
             # Record the main page
-            main_record = await self._create_record_from_page(page, seed_url, 0)
-            all_records.append(main_record)
-            self._write_jsonl(main_record)
+            main_url = page.url
+            if main_url not in pt_visited:
+                pt_visited.add(main_url)
+                main_record = await self._create_record_from_page(page, seed_url, 0)
+                all_records.append(main_record)
+                self._write_jsonl(main_record)
 
             # Step 2: Find ALL project links
             self._logger.info("Finding ALL projects...")
@@ -540,29 +551,65 @@ class DCFacilitiesCrawler(BaseScraper):
             # Try multiple navigation paths to find projects
             project_list_urls = [
                 "https://app.projectteam.com/dashboard/project",  # Primary URL from user
+                "https://app.projectteam.com/my-page",
                 "https://app.projectteam.com/project",
                 "https://app.projectteam.com/projects",
                 "https://app.projectteam.com/home",
+                "https://app.projectteam.com/",
             ]
 
             all_project_links = []
             for plist_url in project_list_urls:
                 try:
+                    self._logger.debug(f"Trying project list URL: {plist_url}")
                     await page.goto(plist_url, timeout=60000, wait_until="domcontentloaded")
                     await asyncio.sleep(3)
 
                     # Scroll to load all projects (infinite scroll handling)
-                    for _ in range(10):
+                    prev_height = 0
+                    for scroll_attempt in range(20):  # More scroll attempts
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                         await asyncio.sleep(1)
+                        new_height = await page.evaluate("document.body.scrollHeight")
+                        if new_height == prev_height:
+                            break  # No more content to load
+                        prev_height = new_height
 
-                    # Find project links
-                    links = await page.eval_on_selector_all(
+                    # Find project links using multiple selectors
+                    # Try different patterns that ProjectTeam might use
+                    selectors = [
                         "a[href*='/project/']",
-                        "elements => elements.map(e => ({href: e.href, text: e.innerText}))"
-                    )
-                    all_project_links.extend(links)
-                except Exception:
+                        "a[href*='project/']",
+                        "[data-project-id]",
+                        ".project-link",
+                        ".project-item a",
+                        "tr[data-id] a",  # Table rows with project links
+                        ".card a[href*='project']",  # Card-based layouts
+                    ]
+
+                    for selector in selectors:
+                        try:
+                            links = await page.eval_on_selector_all(
+                                selector,
+                                "elements => elements.map(e => ({href: e.href || '', text: e.innerText || '', dataId: e.getAttribute('data-project-id') || ''}))"
+                            )
+                            if links:
+                                self._logger.debug(f"Found {len(links)} links with selector: {selector}")
+                                all_project_links.extend(links)
+                        except Exception:
+                            continue
+
+                    # Also extract project IDs from the page HTML directly
+                    html = await page.content()
+                    # Look for patterns like /project/12345 in the HTML
+                    import re
+                    project_pattern = re.compile(r'/project/(\d+)')
+                    matches = project_pattern.findall(html)
+                    for match in matches:
+                        all_project_links.append({"href": f"https://app.projectteam.com/project/{match}", "text": ""})
+
+                except Exception as e:
+                    self._logger.debug(f"Failed to fetch {plist_url}: {e}")
                     continue
 
             # Deduplicate and filter project links
@@ -570,21 +617,42 @@ class DCFacilitiesCrawler(BaseScraper):
             projects = []
             for link in all_project_links:
                 href = link.get("href", "")
-                # Match pattern like /project/12345
-                if "/project/" in href:
-                    # Extract project ID
+                data_id = link.get("dataId", "")
+
+                # Try to extract project ID
+                project_id = None
+
+                # From data attribute
+                if data_id and data_id.isdigit():
+                    project_id = data_id
+
+                # From URL pattern /project/12345
+                if not project_id and "/project/" in href:
                     parts = href.split("/project/")
                     if len(parts) > 1:
-                        project_part = parts[1].split("/")[0].split("?")[0]
-                        if project_part and project_part not in seen_projects:
-                            seen_projects.add(project_part)
-                            projects.append({
-                                "url": f"https://app.projectteam.com/project/{project_part}",
-                                "name": link.get("text", "").strip()[:100],
-                                "id": project_part,
-                            })
+                        id_part = parts[1].split("/")[0].split("?")[0]
+                        if id_part.isdigit():
+                            project_id = id_part
+
+                if project_id and project_id not in seen_projects:
+                    seen_projects.add(project_id)
+                    projects.append({
+                        "url": f"https://app.projectteam.com/project/{project_id}",
+                        "name": link.get("text", "").strip()[:100],
+                        "id": project_id,
+                    })
 
             self._logger.info(f"Found {len(projects)} unique projects - crawling ALL")
+
+            # If still no projects found, log warning and return what we have
+            if not projects:
+                self._logger.warning("No projects found! Check if login succeeded and page structure changed.")
+                # Try to capture the current page for debugging
+                debug_record = await self._create_record_from_page(page, seed_url, 0)
+                debug_record.notes = "DEBUG: No projects found - captured page for analysis"
+                all_records.append(debug_record)
+                self._write_jsonl(debug_record)
+                return all_records
 
             # Step 3: Crawl EACH project comprehensively (NO LIMIT)
             for idx, project in enumerate(projects):
@@ -598,43 +666,63 @@ class DCFacilitiesCrawler(BaseScraper):
                     await page.goto(project_url, timeout=60000, wait_until="domcontentloaded")
                     await asyncio.sleep(2)
 
-                    # Record project main page
-                    project_record = await self._create_record_from_page(page, seed_url, 1)
-                    project_record.notes = f"Project: {project_name}"
-                    all_records.append(project_record)
-                    self._write_jsonl(project_record)
+                    # Record project main page (if not already visited)
+                    current_url = page.url
+                    if current_url not in pt_visited:
+                        pt_visited.add(current_url)
+                        project_record = await self._create_record_from_page(page, seed_url, 1)
+                        project_record.notes = f"Project: {project_name}"
+                        all_records.append(project_record)
+                        self._write_jsonl(project_record)
 
-                    # Step 4: Navigate ALL tabs for this project
-                    visited_tabs = set()
+                    # Step 4: Navigate ALL sections for this project
                     pdf_urls_to_download = []
 
-                    for tab in PROJECT_TABS:
-                        tab_url = f"{project_url}/{tab}"
-                        if tab_url in visited_tabs:
+                    for section, subsection in PROJECT_SECTIONS:
+                        section_url = f"{project_url}/{section}/{subsection}"
+
+                        # Skip if already visited
+                        if section_url in pt_visited:
                             continue
-                        visited_tabs.add(tab_url)
 
                         try:
-                            await page.goto(tab_url, timeout=30000, wait_until="domcontentloaded")
+                            await page.goto(section_url, timeout=30000, wait_until="domcontentloaded")
                             await asyncio.sleep(2)
 
-                            # Check if page loaded successfully (not 404)
-                            current = page.url.lower()
-                            if "404" in current or "error" in current or "not-found" in current:
+                            # Check if we actually landed on the requested page
+                            # (ProjectTeam may redirect invalid URLs back to dashboard)
+                            final_url = page.url
+                            if final_url in pt_visited:
+                                # Already recorded this page, skip
                                 continue
+
+                            # Check if page loaded successfully (not 404 or redirected away)
+                            current_lower = final_url.lower()
+                            if "404" in current_lower or "error" in current_lower or "not-found" in current_lower:
+                                continue
+
+                            # Check if we were redirected back to a different page
+                            # If the final URL doesn't contain our section, navigation likely failed
+                            if section not in final_url.lower() and subsection not in final_url.lower():
+                                self._logger.debug(f"Section {section}/{subsection} redirected to {final_url}")
+                                continue
+
+                            pt_visited.add(final_url)
 
                             # Scroll to load dynamic content
                             for _ in range(3):
                                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                                 await asyncio.sleep(0.5)
 
-                            # Record the tab page
-                            tab_record = await self._create_record_from_page(page, seed_url, 2)
-                            tab_record.notes = f"Project {project_name} - Tab: {tab}"
-                            all_records.append(tab_record)
-                            self._write_jsonl(tab_record)
+                            # Record the section page
+                            section_record = await self._create_record_from_page(page, seed_url, 2)
+                            section_record.notes = f"Project {project_name} - Section: {section}/{subsection}"
+                            all_records.append(section_record)
+                            self._write_jsonl(section_record)
 
-                            # Find ALL downloadable links on this tab
+                            self._logger.debug(f"  Recorded section: {section}/{subsection}")
+
+                            # Find ALL downloadable links on this section
                             links = await page.eval_on_selector_all(
                                 "a[href*='.pdf'], a[href*='/document/'], a[href*='/download'], "
                                 "a[href*='/attachment'], a[href*='/file'], a[href*='download='], "
@@ -652,11 +740,11 @@ class DCFacilitiesCrawler(BaseScraper):
                                     pdf_urls_to_download.append({
                                         "url": pdf_url,
                                         "text": link_text,
-                                        "tab": tab,
+                                        "section": f"{section}/{subsection}",
                                     })
 
                         except Exception as e:
-                            self._logger.debug(f"Tab {tab} not accessible: {e}")
+                            self._logger.debug(f"Section {section}/{subsection} not accessible: {e}")
                             continue
 
                     # Step 5: Download and process ALL PDFs for this project (excluding drawings)
@@ -666,7 +754,12 @@ class DCFacilitiesCrawler(BaseScraper):
                     for pdf_info in unique_pdf_urls:
                         pdf_url = pdf_info["url"]
                         pdf_text = pdf_info["text"]
-                        pdf_tab = pdf_info["tab"]
+                        pdf_section = pdf_info["section"]
+
+                        # Skip if already downloaded
+                        if pdf_url in pt_visited:
+                            continue
+                        pt_visited.add(pdf_url)
 
                         # Double-check not a drawing
                         if self._is_drawing(pdf_url, pdf_text):
@@ -677,10 +770,10 @@ class DCFacilitiesCrawler(BaseScraper):
 
                         try:
                             pdf_record = await self._download_and_process_pdf_authenticated(
-                                pdf_url, seed_url, 3, f"{project_name} / {pdf_tab}"
+                                pdf_url, seed_url, 3, f"{project_name} / {pdf_section}"
                             )
                             if pdf_record:
-                                pdf_record.notes = f"PDF from {project_name} / {pdf_tab}: {pdf_text[:100]}"
+                                pdf_record.notes = f"PDF from {project_name} / {pdf_section}: {pdf_text[:100]}"
                                 all_records.append(pdf_record)
                                 self._write_jsonl(pdf_record)
                         except Exception as e:
@@ -729,6 +822,13 @@ class DCFacilitiesCrawler(BaseScraper):
         await self._process_html(record, content, seed_url)
         return record
 
+    async def _get_auth_cookies_header(self) -> str:
+        """Get cookies from authenticated browser context as a header string."""
+        if self._auth_context is None:
+            return ""
+        cookies = await self._auth_context.cookies()
+        return "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+
     async def _download_and_process_pdf_authenticated(
         self,
         url: str,
@@ -736,7 +836,7 @@ class DCFacilitiesCrawler(BaseScraper):
         depth: int,
         project_name: str = "",
     ) -> CrawlRecord | None:
-        """Download PDF via authenticated browser and process with OCR."""
+        """Download PDF via authenticated session and process with OCR."""
         record = CrawlRecord(
             source_seed=seed_url,
             crawl_depth=depth,
@@ -745,53 +845,103 @@ class DCFacilitiesCrawler(BaseScraper):
             fetched_at=datetime.now(timezone.utc),
         )
 
+        pdf_bytes = None
+
         try:
-            # Use authenticated context for download
-            page = await self._auth_context.new_page()
+            # Method 1: Use Playwright's API request context (preserves auth)
+            if self._auth_context:
+                try:
+                    # Create API request context from browser context
+                    api_context = self._auth_context.request
+                    response = await api_context.get(url, timeout=120000)
 
-            try:
-                # Set up download handling
-                async with page.expect_download(timeout=120000) as download_info:
-                    await page.goto(url, timeout=60000)
+                    if response.ok:
+                        pdf_bytes = await response.body()
+                        record.http_status = response.status
+                        record.content_type = response.headers.get("content-type", "application/pdf")
+                        record.final_url = response.url
+                        self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via API context")
+                except Exception as e:
+                    self._logger.debug(f"API context download failed: {e}")
 
-                download = await download_info.value
-                temp_path = await download.path()
+            # Method 2: Use aiohttp with cookies from browser
+            if not pdf_bytes:
+                try:
+                    cookie_header = await self._get_auth_cookies_header()
+                    headers = {
+                        "Cookie": cookie_header,
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/120.0.0.0 Safari/537.36"
+                        ),
+                        "Accept": "application/pdf,*/*",
+                    }
 
-                if temp_path:
-                    # Read the downloaded file
-                    with open(temp_path, "rb") as f:
-                        pdf_bytes = f.read()
+                    session = await self._ensure_session()
+                    async with session.get(url, headers=headers, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=120)) as response:
+                        if response.status == 200:
+                            pdf_bytes = await response.read()
+                            record.http_status = 200
+                            record.content_type = response.headers.get("Content-Type", "application/pdf")
+                            record.final_url = str(response.url)
+                            self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via aiohttp with cookies")
+                        else:
+                            record.extraction_errors.append(f"HTTP {response.status}")
+                except Exception as e:
+                    self._logger.debug(f"aiohttp download failed: {e}")
 
-                    record.http_status = 200
-                    record.content_type = "application/pdf"
+            # Method 3: Use Playwright page with download handling
+            if not pdf_bytes and self._auth_context:
+                page = None
+                try:
+                    page = await self._auth_context.new_page()
 
-                    # Process PDF with OCR
+                    # Try to trigger download
+                    try:
+                        async with page.expect_download(timeout=60000) as download_info:
+                            await page.goto(url, timeout=30000)
+
+                        download = await download_info.value
+                        temp_path = await download.path()
+
+                        if temp_path:
+                            with open(temp_path, "rb") as f:
+                                pdf_bytes = f.read()
+                            record.http_status = 200
+                            record.content_type = "application/pdf"
+                            self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via Playwright download")
+                    except Exception:
+                        # If no download triggered, try getting response body
+                        response = await page.goto(url, timeout=60000, wait_until="load")
+                        if response and response.status == 200:
+                            content_type = response.headers.get("content-type", "")
+                            if "pdf" in content_type.lower() or "octet-stream" in content_type.lower():
+                                pdf_bytes = await response.body()
+                                record.http_status = 200
+                                record.content_type = content_type
+                                self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via Playwright response")
+                finally:
+                    if page:
+                        await page.close()
+
+            # Process PDF if we got content
+            if pdf_bytes and len(pdf_bytes) > 100:
+                # Verify it's actually a PDF (starts with %PDF)
+                if pdf_bytes[:4] == b'%PDF':
                     await self._process_pdf(record, pdf_bytes)
                     record.notes = f"PDF from project: {project_name}" if project_name else "PDF downloaded via authenticated session"
-
+                    self._logger.info(f"    Processed PDF: {len(record.raw_content or '')} chars extracted")
                     return record
-
-            except Exception as e:
-                # If download fails, try direct fetch
-                response = await page.goto(url, timeout=60000, wait_until="domcontentloaded")
-                if response and response.status == 200:
-                    # Check if it's actually a PDF
-                    content_type = response.headers.get("content-type", "")
-                    if "pdf" in content_type.lower():
-                        body = await response.body()
-                        await self._process_pdf(record, body)
-                        record.http_status = 200
-                        record.content_type = content_type
-                        record.notes = f"PDF from project: {project_name}"
-                        return record
-
-                record.extraction_errors.append(f"Download failed: {e}")
-
-            finally:
-                await page.close()
+                else:
+                    record.extraction_errors.append("Downloaded content is not a valid PDF")
+                    self._logger.warning(f"    Not a PDF: {pdf_bytes[:20]}")
+            else:
+                record.extraction_errors.append("Failed to download PDF content")
 
         except Exception as e:
             record.extraction_errors.append(f"PDF processing error: {e}")
+            self._logger.warning(f"PDF download error for {url}: {e}")
 
         return record if record.raw_content else None
 
