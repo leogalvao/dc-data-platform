@@ -836,7 +836,14 @@ class DCFacilitiesCrawler(BaseScraper):
         depth: int,
         project_name: str = "",
     ) -> CrawlRecord | None:
-        """Download PDF via authenticated session and process with OCR."""
+        """
+        Download PDF via authenticated session and process with OCR.
+
+        ProjectTeam uses JavaScript-triggered downloads, so we need to:
+        1. Navigate to the document page
+        2. Click the download button
+        3. Wait for the download to complete
+        """
         record = CrawlRecord(
             source_seed=seed_url,
             crawl_depth=depth,
@@ -847,60 +854,55 @@ class DCFacilitiesCrawler(BaseScraper):
 
         pdf_bytes = None
 
+        if not self._auth_context:
+            record.extraction_errors.append("No authenticated browser context")
+            return None
+
+        page = None
         try:
-            # Method 1: Use Playwright's API request context (preserves auth)
-            if self._auth_context:
+            page = await self._auth_context.new_page()
+
+            # Navigate to the document page
+            await page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(2)
+
+            record.final_url = page.url
+
+            # ProjectTeam download button selectors (try multiple patterns)
+            # "Download All" is the visible button on ProjectTeam document pages
+            download_selectors = [
+                "button:has-text('Download All')",
+                "button:has-text('Download')",
+                "a:has-text('Download All')",
+                "a:has-text('Download')",
+                "button[data-testid='download']",
+                "[aria-label*='download' i]",
+                "[aria-label*='Download' i]",
+                ".download-button",
+                ".download-btn",
+                "a[download]",
+                "button.btn-download",
+                "[data-action='download']",
+                # ProjectTeam specific patterns
+                "button[ng-click*='download']",
+                "a[ng-click*='download']",
+                ".fa-download",
+                "[class*='download']",
+                # Icon buttons
+                "button svg[data-icon='download']",
+                "button .icon-download",
+            ]
+
+            download_clicked = False
+            for selector in download_selectors:
                 try:
-                    # Create API request context from browser context
-                    api_context = self._auth_context.request
-                    response = await api_context.get(url, timeout=120000)
+                    button = page.locator(selector).first
+                    if await button.count() > 0 and await button.is_visible():
+                        self._logger.debug(f"    Found download button: {selector}")
 
-                    if response.ok:
-                        pdf_bytes = await response.body()
-                        record.http_status = response.status
-                        record.content_type = response.headers.get("content-type", "application/pdf")
-                        record.final_url = response.url
-                        self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via API context")
-                except Exception as e:
-                    self._logger.debug(f"API context download failed: {e}")
-
-            # Method 2: Use aiohttp with cookies from browser
-            if not pdf_bytes:
-                try:
-                    cookie_header = await self._get_auth_cookies_header()
-                    headers = {
-                        "Cookie": cookie_header,
-                        "User-Agent": (
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/120.0.0.0 Safari/537.36"
-                        ),
-                        "Accept": "application/pdf,*/*",
-                    }
-
-                    session = await self._ensure_session()
-                    async with session.get(url, headers=headers, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=120)) as response:
-                        if response.status == 200:
-                            pdf_bytes = await response.read()
-                            record.http_status = 200
-                            record.content_type = response.headers.get("Content-Type", "application/pdf")
-                            record.final_url = str(response.url)
-                            self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via aiohttp with cookies")
-                        else:
-                            record.extraction_errors.append(f"HTTP {response.status}")
-                except Exception as e:
-                    self._logger.debug(f"aiohttp download failed: {e}")
-
-            # Method 3: Use Playwright page with download handling
-            if not pdf_bytes and self._auth_context:
-                page = None
-                try:
-                    page = await self._auth_context.new_page()
-
-                    # Try to trigger download
-                    try:
-                        async with page.expect_download(timeout=60000) as download_info:
-                            await page.goto(url, timeout=30000)
+                        # Set up download handler before clicking
+                        async with page.expect_download(timeout=30000) as download_info:
+                            await button.click()
 
                         download = await download_info.value
                         temp_path = await download.path()
@@ -910,40 +912,220 @@ class DCFacilitiesCrawler(BaseScraper):
                                 pdf_bytes = f.read()
                             record.http_status = 200
                             record.content_type = "application/pdf"
-                            self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via Playwright download")
-                    except Exception:
-                        # If no download triggered, try getting response body
-                        response = await page.goto(url, timeout=60000, wait_until="load")
-                        if response and response.status == 200:
-                            content_type = response.headers.get("content-type", "")
-                            if "pdf" in content_type.lower() or "octet-stream" in content_type.lower():
-                                pdf_bytes = await response.body()
-                                record.http_status = 200
-                                record.content_type = content_type
-                                self._logger.debug(f"Downloaded {len(pdf_bytes)} bytes via Playwright response")
-                finally:
-                    if page:
-                        await page.close()
+                            download_clicked = True
+                            self._logger.debug(f"    Downloaded {len(pdf_bytes)} bytes via button click")
+                            break
+                except Exception as e:
+                    self._logger.debug(f"    Selector {selector} failed: {e}")
+                    continue
 
-            # Process PDF if we got content
+            # If no download button found, try direct navigation with download expectation
+            if not pdf_bytes:
+                try:
+                    # Check if current page has a direct download link in the URL
+                    # Sometimes the document view page has a download query param we can modify
+                    current_url = page.url
+
+                    # Try adding download parameter or changing to download endpoint
+                    download_urls = [
+                        current_url.replace("/view", "/download") if "/view" in current_url else None,
+                        current_url + "?download=true" if "?" not in current_url else current_url + "&download=true",
+                        current_url.replace("/document/", "/document/download/") if "/document/" in current_url else None,
+                    ]
+
+                    for dl_url in download_urls:
+                        if not dl_url:
+                            continue
+                        try:
+                            async with page.expect_download(timeout=15000) as download_info:
+                                await page.goto(dl_url, timeout=10000)
+                            download = await download_info.value
+                            temp_path = await download.path()
+                            if temp_path:
+                                with open(temp_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                record.http_status = 200
+                                record.final_url = dl_url
+                                self._logger.debug(f"    Downloaded via modified URL: {dl_url}")
+                                break
+                        except Exception:
+                            continue
+                except Exception as e:
+                    self._logger.debug(f"    URL modification approach failed: {e}")
+
+            # Last resort: try to find and click any element that triggers a download
+            if not pdf_bytes:
+                try:
+                    # Look for any clickable element with download-related attributes
+                    clickables = await page.query_selector_all(
+                        "[onclick*='download'], [onclick*='Download'], "
+                        "[href*='download'], [data-download], "
+                        "a[href$='.pdf'], button[title*='download' i]"
+                    )
+
+                    for elem in clickables[:3]:  # Try first 3 matches
+                        try:
+                            async with page.expect_download(timeout=15000) as download_info:
+                                await elem.click()
+                            download = await download_info.value
+                            temp_path = await download.path()
+                            if temp_path:
+                                with open(temp_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                self._logger.debug(f"    Downloaded via clickable element")
+                                break
+                        except Exception:
+                            continue
+                except Exception as e:
+                    self._logger.debug(f"    Clickable element approach failed: {e}")
+
+            # Process downloaded content based on file type
             if pdf_bytes and len(pdf_bytes) > 100:
-                # Verify it's actually a PDF (starts with %PDF)
-                if pdf_bytes[:4] == b'%PDF':
+                file_type = self._detect_file_type(pdf_bytes)
+
+                if file_type == "pdf":
                     await self._process_pdf(record, pdf_bytes)
-                    record.notes = f"PDF from project: {project_name}" if project_name else "PDF downloaded via authenticated session"
+                    record.notes = f"PDF from project: {project_name}" if project_name else "PDF downloaded"
                     self._logger.info(f"    Processed PDF: {len(record.raw_content or '')} chars extracted")
                     return record
+
+                elif file_type == "office":
+                    # Office documents (docx, xlsx, pptx) - extract text
+                    text = await self._extract_office_text(pdf_bytes)
+                    if text:
+                        record.raw_content = text
+                        record.page_type = PageType.OTHER
+                        record.content_type = "application/vnd.openxmlformats-officedocument"
+                        record.notes = f"Office doc from project: {project_name}" if project_name else "Office document"
+                        self._logger.info(f"    Processed Office doc: {len(text)} chars extracted")
+                        return record
+                    else:
+                        record.extraction_errors.append("Failed to extract text from Office document")
+
+                elif file_type == "zip":
+                    # Try to extract PDFs from ZIP
+                    extracted = await self._extract_from_zip(pdf_bytes, record, seed_url, depth, project_name)
+                    if extracted:
+                        return extracted
+                    record.extraction_errors.append("ZIP file contained no extractable PDFs")
+
                 else:
-                    record.extraction_errors.append("Downloaded content is not a valid PDF")
-                    self._logger.warning(f"    Not a PDF: {pdf_bytes[:20]}")
+                    record.extraction_errors.append(f"Unsupported file type: {file_type}")
+                    self._logger.warning(f"    Unsupported file type: {pdf_bytes[:20]}")
             else:
-                record.extraction_errors.append("Failed to download PDF content")
+                record.extraction_errors.append("Failed to download - no download button found or download failed")
+                self._logger.warning(f"    Could not download from {url}")
 
         except Exception as e:
             record.extraction_errors.append(f"PDF processing error: {e}")
             self._logger.warning(f"PDF download error for {url}: {e}")
 
+        finally:
+            if page:
+                await page.close()
+
         return record if record.raw_content else None
+
+    def _detect_file_type(self, content: bytes) -> str:
+        """Detect file type from magic bytes."""
+        if content[:4] == b'%PDF':
+            return "pdf"
+        elif content[:2] == b'PK':
+            # Could be ZIP, Office (docx/xlsx/pptx), or other PK-based format
+            # Check for Office document signatures
+            if b'word/' in content[:1000] or b'[Content_Types].xml' in content[:1000]:
+                return "office"
+            elif b'xl/' in content[:1000]:
+                return "office"  # Excel
+            elif b'ppt/' in content[:1000]:
+                return "office"  # PowerPoint
+            return "zip"
+        elif content[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+            return "office_legacy"  # Old Office format (doc, xls, ppt)
+        else:
+            return "unknown"
+
+    async def _extract_office_text(self, content: bytes) -> str | None:
+        """Extract text from Office documents (docx, xlsx, pptx)."""
+        try:
+            import io
+            import zipfile
+
+            text_parts = []
+
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                for name in zf.namelist():
+                    # Word documents
+                    if name == "word/document.xml":
+                        xml_content = zf.read(name).decode("utf-8", errors="replace")
+                        # Simple XML text extraction
+                        import re
+                        # Extract text between <w:t> tags
+                        texts = re.findall(r'<w:t[^>]*>([^<]+)</w:t>', xml_content)
+                        text_parts.extend(texts)
+
+                    # Excel - extract shared strings
+                    elif name == "xl/sharedStrings.xml":
+                        xml_content = zf.read(name).decode("utf-8", errors="replace")
+                        import re
+                        texts = re.findall(r'<t[^>]*>([^<]+)</t>', xml_content)
+                        text_parts.extend(texts)
+
+                    # PowerPoint
+                    elif name.startswith("ppt/slides/") and name.endswith(".xml"):
+                        xml_content = zf.read(name).decode("utf-8", errors="replace")
+                        import re
+                        texts = re.findall(r'<a:t>([^<]+)</a:t>', xml_content)
+                        text_parts.extend(texts)
+
+            return "\n".join(text_parts) if text_parts else None
+
+        except Exception as e:
+            self._logger.debug(f"Office text extraction failed: {e}")
+            return None
+
+    async def _extract_from_zip(
+        self,
+        content: bytes,
+        record: CrawlRecord,
+        seed_url: str,
+        depth: int,
+        project_name: str,
+    ) -> CrawlRecord | None:
+        """Extract and process PDFs from a ZIP file."""
+        try:
+            import io
+            import zipfile
+
+            all_text = []
+
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                pdf_count = 0
+                for name in zf.namelist():
+                    if name.lower().endswith('.pdf'):
+                        pdf_data = zf.read(name)
+                        if pdf_data[:4] == b'%PDF':
+                            # Process this PDF
+                            self._init_pdf_processor()
+                            try:
+                                result = self._pdf_processor.extract(pdf_data)
+                                if result.full_text:
+                                    all_text.append(f"=== {name} ===\n{result.full_text}")
+                                    pdf_count += 1
+                            except Exception as e:
+                                self._logger.debug(f"Failed to extract PDF {name} from ZIP: {e}")
+
+                if all_text:
+                    record.raw_content = "\n\n".join(all_text)
+                    record.page_type = PageType.PDF
+                    record.notes = f"ZIP with {pdf_count} PDFs from project: {project_name}"
+                    self._logger.info(f"    Extracted {pdf_count} PDFs from ZIP: {len(record.raw_content)} chars")
+                    return record
+
+        except Exception as e:
+            self._logger.debug(f"ZIP extraction failed: {e}")
+
+        return None
 
     def _needs_playwright(self, url: str) -> bool:
         """Check if URL requires Playwright (Cloudflare-protected domain)."""
