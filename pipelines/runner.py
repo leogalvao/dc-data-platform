@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from factory.config.settings import Settings
-from factory.pipelines.base import (
+from config.settings import Settings
+from pipelines.base import (
     Pipeline,
     PipelineResult,
     PipelineTask,
@@ -56,14 +56,14 @@ class PipelineRunner:
         """Register default task handlers."""
         # Import task modules to register their handlers
         try:
-            from factory.pipelines.tasks import scrape
-            from factory.pipelines.tasks import load_warehouse
-            from factory.pipelines.tasks import build_gold
-            from factory.pipelines.tasks import build_diamond
-            from factory.pipelines.tasks import build_silver
-            from factory.pipelines.tasks import quality_checks
-            from factory.pipelines.tasks import validate_layer
-            from factory.pipelines.tasks import inject_bronze
+            from pipelines.tasks import scrape
+            from pipelines.tasks import load_warehouse
+            from pipelines.tasks import build_gold
+            from pipelines.tasks import build_diamond
+            from pipelines.tasks import build_silver
+            from pipelines.tasks import quality_checks
+            from pipelines.tasks import validate_layer
+            from pipelines.tasks import inject_bronze
         except ImportError as e:
             logger.warning(f"Failed to import task handlers: {e}")
 

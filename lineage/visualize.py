@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from factory.lineage.graph import LineageGraph, NodeType
+from lineage.graph import LineageGraph, NodeType
 
 logger = logging.getLogger(__name__)
 

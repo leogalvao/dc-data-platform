@@ -8,9 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from factory.config.settings import Settings
-from factory.metrics.collectors.custom import generate_layer_report
-from factory.metrics.collectors.parquet_stats import collect_layer_metrics
+from config.settings import Settings
+from metrics.collectors.custom import generate_layer_report
+from metrics.collectors.parquet_stats import collect_layer_metrics
 
 logger = logging.getLogger(__name__)
 

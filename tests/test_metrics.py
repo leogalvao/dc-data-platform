@@ -13,7 +13,7 @@ class TestParquetMetrics:
 
     def test_size_mb(self):
         """Test size_mb calculation."""
-        from factory.metrics.collectors.parquet_stats import ParquetMetrics
+        from metrics.collectors.parquet_stats import ParquetMetrics
 
         metrics = ParquetMetrics(
             dataset_name="test",
@@ -30,7 +30,7 @@ class TestParquetMetrics:
 
     def test_max_null_rate(self):
         """Test max_null_rate calculation."""
-        from factory.metrics.collectors.parquet_stats import ParquetMetrics
+        from metrics.collectors.parquet_stats import ParquetMetrics
 
         metrics = ParquetMetrics(
             dataset_name="test",
@@ -47,7 +47,7 @@ class TestParquetMetrics:
 
     def test_avg_null_rate(self):
         """Test avg_null_rate calculation."""
-        from factory.metrics.collectors.parquet_stats import ParquetMetrics
+        from metrics.collectors.parquet_stats import ParquetMetrics
 
         metrics = ParquetMetrics(
             dataset_name="test",
@@ -64,7 +64,7 @@ class TestParquetMetrics:
 
     def test_to_dict(self):
         """Test converting to dict."""
-        from factory.metrics.collectors.parquet_stats import ParquetMetrics
+        from metrics.collectors.parquet_stats import ParquetMetrics
 
         metrics = ParquetMetrics(
             dataset_name="test",
@@ -89,14 +89,14 @@ class TestCollectParquetMetrics:
 
     def test_nonexistent_path(self, temp_dir):
         """Test with nonexistent path."""
-        from factory.metrics.collectors.parquet_stats import collect_parquet_metrics
+        from metrics.collectors.parquet_stats import collect_parquet_metrics
 
         result = collect_parquet_metrics(temp_dir / "nonexistent", "test")
         assert result is None
 
     def test_empty_directory(self, temp_dir):
         """Test with directory containing no parquet files."""
-        from factory.metrics.collectors.parquet_stats import collect_parquet_metrics
+        from metrics.collectors.parquet_stats import collect_parquet_metrics
 
         empty_dir = temp_dir / "empty"
         empty_dir.mkdir()
@@ -106,7 +106,7 @@ class TestCollectParquetMetrics:
 
     def test_with_parquet_data(self, mock_parquet_data):
         """Test with actual parquet data."""
-        from factory.metrics.collectors.parquet_stats import collect_parquet_metrics
+        from metrics.collectors.parquet_stats import collect_parquet_metrics
 
         result = collect_parquet_metrics(mock_parquet_data, "test")
 
@@ -128,14 +128,14 @@ class TestCollectLayerMetrics:
 
     def test_nonexistent_layer(self, temp_dir):
         """Test with nonexistent layer path."""
-        from factory.metrics.collectors.parquet_stats import collect_layer_metrics
+        from metrics.collectors.parquet_stats import collect_layer_metrics
 
         result = collect_layer_metrics(temp_dir / "nonexistent", "test")
         assert result == []
 
     def test_with_datasets(self, mock_parquet_data, temp_dir):
         """Test with multiple datasets."""
-        from factory.metrics.collectors.parquet_stats import collect_layer_metrics
+        from metrics.collectors.parquet_stats import collect_layer_metrics
 
         # mock_parquet_data is a single dataset, use its parent as layer
         layer_path = mock_parquet_data.parent
@@ -151,7 +151,7 @@ class TestCustomMetrics:
 
     def test_check_freshness(self, mock_parquet_data):
         """Test freshness check."""
-        from factory.metrics.collectors.custom import check_freshness
+        from metrics.collectors.custom import check_freshness
 
         result = check_freshness(
             mock_parquet_data,
@@ -170,7 +170,7 @@ class TestCustomMetrics:
 
     def test_calculate_quality_score(self, mock_parquet_data):
         """Test quality score calculation."""
-        from factory.metrics.collectors.custom import calculate_quality_score
+        from metrics.collectors.custom import calculate_quality_score
 
         result = calculate_quality_score(
             mock_parquet_data,

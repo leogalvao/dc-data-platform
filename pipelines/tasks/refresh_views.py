@@ -6,9 +6,9 @@ import logging
 import subprocess
 from datetime import datetime
 
-from factory.config.settings import Settings
-from factory.pipelines.base import PipelineTask, TaskResult, TaskStatus
-from factory.pipelines.runner import register_task_handler
+from config.settings import Settings
+from pipelines.base import PipelineTask, TaskResult, TaskStatus
+from pipelines.runner import register_task_handler
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.contracts.base import (
+from contracts.base import (
     ColumnDefinition,
     DataContract,
     DataType,

@@ -107,7 +107,7 @@ def mock_parquet_data(temp_dir):
 @pytest.fixture
 def settings(temp_dir):
     """Create test settings."""
-    from factory.config.settings import Settings
+    from config.settings import Settings
 
     # Create mock directories
     scrapers_path = temp_dir / "scrapers_unified"

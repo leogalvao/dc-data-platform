@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+.eggs
+*.egg-info
+*.egg
+dist
+build
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+data/bronze
+data/silver
+data/gold
+data/diamond
+data/quarantine
+data/reports
+data/checkpoints
+data/crawl
+*.log
+*.parquet
+*.json
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+
+# Tests
+.pytest_cache
+.coverage
+htmlcov
+.tox
+
+# Documentation
+docs/_build

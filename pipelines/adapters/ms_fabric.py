@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from factory.config.settings import Settings
-from factory.pipelines.base import Pipeline, PipelineResult, TaskStatus
+from config.settings import Settings
+from pipelines.base import Pipeline, PipelineResult, TaskStatus
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 """Data contracts module for DC Data Platform Factory layer."""
 
-from factory.contracts.base import (
+from contracts.base import (
     DataContract,
     ColumnDefinition,
     SLADefinition,

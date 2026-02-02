@@ -29,7 +29,7 @@ logger = logging.getLogger("factory")
 
 def get_settings():
     """Load configuration settings."""
-    from factory.config.settings import Settings
+    from config.settings import Settings
 
     return Settings()
 
@@ -90,7 +90,7 @@ def build_gold(
     ),
 ):
     """Build gold layer from silver data."""
-    from factory.pipelines.tasks.build_gold import build_gold_layer_direct
+    from pipelines.tasks.build_gold import build_gold_layer_direct
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -140,7 +140,7 @@ def check_quality(
     ),
 ):
     """Run quality checks on data layer."""
-    from factory.metrics.collectors.parquet_stats import collect_parquet_metrics
+    from metrics.collectors.parquet_stats import collect_parquet_metrics
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -235,7 +235,7 @@ def run_pipeline(
     ),
 ):
     """Run a pipeline definition."""
-    from factory.pipelines.adapters.local import LocalAdapter
+    from pipelines.adapters.local import LocalAdapter
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -301,7 +301,7 @@ def run_pipeline(
 @app.command()
 def list_pipelines():
     """List available pipeline definitions."""
-    from factory.pipelines.adapters.local import LocalAdapter
+    from pipelines.adapters.local import LocalAdapter
 
     settings = get_settings()
     adapter = LocalAdapter(settings)
@@ -330,7 +330,7 @@ def validate_contracts(
     ),
 ):
     """Validate data against contracts."""
-    from factory.contracts.base import DataContract, validate_data_against_contract
+    from contracts.base import DataContract, validate_data_against_contract
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -413,7 +413,7 @@ def generate_report(
     ),
 ):
     """Generate data quality and freshness reports."""
-    from factory.metrics.reports.generator import (
+    from metrics.reports.generator import (
         export_report_html,
         export_report_json,
         generate_freshness_report,

@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from factory.semantic.models import SemanticModel
+from semantic.models import SemanticModel
 
 logger = logging.getLogger(__name__)
 

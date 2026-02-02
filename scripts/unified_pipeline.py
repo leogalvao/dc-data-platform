@@ -283,9 +283,13 @@ class UnifiedPipeline:
                     else:
                         continue
 
-                    layer_records[layer] = (
-                        sum(counts.values()) if isinstance(counts, dict) else 0
-                    )
+                    if isinstance(counts, dict):
+                        # Sum only numeric values, ignore strings like "exists" or "discovered"
+                        layer_records[layer] = sum(
+                            v for v in counts.values() if isinstance(v, (int, float))
+                        )
+                    else:
+                        layer_records[layer] = 0
                     progress.update(task, completed=True)
 
             total_records = sum(layer_records.values())

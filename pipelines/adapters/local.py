@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from factory.config.settings import Settings
-from factory.pipelines.base import Pipeline, PipelineResult
-from factory.pipelines.runner import PipelineRunner
+from config.settings import Settings
+from pipelines.base import Pipeline, PipelineResult
+from pipelines.runner import PipelineRunner
 
 logger = logging.getLogger(__name__)
 

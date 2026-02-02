@@ -12,7 +12,7 @@ class TestEndToEnd:
 
     def test_contract_validation_workflow(self, temp_dir, sample_contract_yaml, mock_parquet_data):
         """Test complete contract validation workflow."""
-        from factory.contracts.base import DataContract, validate_data_against_contract
+        from contracts.base import DataContract, validate_data_against_contract
 
         # Create contract that matches mock data
         contract_yaml = """
@@ -51,7 +51,7 @@ sla:
 
     def test_quality_report_generation(self, settings, mock_parquet_data):
         """Test quality report generation."""
-        from factory.metrics.collectors.custom import generate_layer_report
+        from metrics.collectors.custom import generate_layer_report
 
         # Move mock data to silver layer
         import shutil
@@ -72,8 +72,8 @@ sla:
 
     def test_pipeline_dry_run(self, temp_dir, sample_pipeline_yaml, settings):
         """Test pipeline dry run."""
-        from factory.pipelines.adapters.local import LocalAdapter
-        from factory.pipelines.base import Pipeline
+        from pipelines.adapters.local import LocalAdapter
+        from pipelines.base import Pipeline
 
         # Create pipeline file
         pipeline_file = temp_dir / "test.yaml"
@@ -89,7 +89,7 @@ sla:
 
     def test_lineage_graph(self, temp_dir):
         """Test lineage graph construction."""
-        from factory.lineage.graph import LineageGraph, LineageNode, NodeType, LineageEdge
+        from lineage.graph import LineageGraph, LineageNode, NodeType, LineageEdge
 
         graph = LineageGraph()
 
@@ -115,7 +115,7 @@ sla:
 
     def test_semantic_model(self, temp_dir):
         """Test semantic model loading and export."""
-        from factory.semantic.models import SemanticModel
+        from semantic.models import SemanticModel
 
         model_yaml = """
 name: test_model
@@ -156,7 +156,7 @@ class TestCLI:
         """Test CLI help output."""
         from typer.testing import CliRunner
 
-        from factory.cli import app
+        from cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["--help"])
@@ -168,7 +168,7 @@ class TestCLI:
         """Test CLI version command."""
         from typer.testing import CliRunner
 
-        from factory.cli import app
+        from cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["version"])
@@ -180,7 +180,7 @@ class TestCLI:
         """Test CLI status command."""
         from typer.testing import CliRunner
 
-        from factory.cli import app
+        from cli import app
 
         # Mock settings
         def mock_get_settings():

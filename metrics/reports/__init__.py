@@ -1,6 +1,6 @@
 """Report generation for metrics."""
 
-from factory.metrics.reports.generator import (
+from metrics.reports.generator import (
     generate_quality_report,
     generate_freshness_report,
     generate_full_report,

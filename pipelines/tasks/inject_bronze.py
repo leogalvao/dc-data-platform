@@ -10,10 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from factory.config.settings import Settings
-from factory.contracts.base import DataContract, validate_data_against_contract
-from factory.pipelines.base import PipelineTask, TaskResult, TaskStatus
-from factory.pipelines.runner import register_task_handler
+from config.settings import Settings
+from contracts.base import DataContract, validate_data_against_contract
+from pipelines.base import PipelineTask, TaskResult, TaskStatus
+from pipelines.runner import register_task_handler
 
 logger = logging.getLogger(__name__)
 

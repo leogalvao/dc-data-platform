@@ -1,6 +1,6 @@
 """Alert handling for metrics."""
 
-from factory.metrics.alerts.handlers import (
+from metrics.alerts.handlers import (
     AlertHandler,
     ConsoleAlertHandler,
     SlackAlertHandler,

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from factory.metrics.collectors.parquet_stats import collect_parquet_metrics
+from metrics.collectors.parquet_stats import collect_parquet_metrics
 
 logger = logging.getLogger(__name__)
 

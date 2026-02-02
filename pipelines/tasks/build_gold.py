@@ -9,9 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from factory.config.settings import Settings
-from factory.pipelines.base import PipelineTask, TaskResult, TaskStatus
-from factory.pipelines.runner import register_task_handler
+from config.settings import Settings
+from pipelines.base import PipelineTask, TaskResult, TaskStatus
+from pipelines.runner import register_task_handler
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,6 @@ try:
         silver_path='{silver_path}',
         gold_path='{gold_path}',
         datasets={datasets if datasets else None},
-        force_rebuild={force_rebuild},
     )
     print("BUILD_SUCCESS")
     for dataset, count in results.items():
