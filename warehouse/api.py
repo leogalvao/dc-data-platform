@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 
 from warehouse.config import config
 
@@ -63,24 +63,43 @@ def get_kpis() -> dict[str, Any]:
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM analytics.mv_kpi_summary LIMIT 1")
-                row = cur.fetchone()
+                # Get supplier stats
+                cur.execute("""
+                    SELECT
+                        COUNT(*) as total_suppliers,
+                        COUNT(*) FILTER (WHERE is_cbe = TRUE) as cbe_suppliers
+                    FROM analytics.dim_supplier
+                """)
+                supplier_row = cur.fetchone()
 
-                # Get property count
-                cur.execute("SELECT COALESCE(SUM(property_count), 0) FROM analytics.gold_property_by_ward")
-                prop_row = cur.fetchone()
+                # Get contract stats
+                cur.execute("SELECT COUNT(*) FROM analytics.dim_contract")
+                contract_count = cur.fetchone()[0]
 
-                if row:
-                    return {
-                        "totalContracts": row[1] or 0,
-                        "totalSpend": float(row[2] or 0),
-                        "totalVendors": row[3] or 0,
-                        "avgPayment": float(row[4] or 0),
-                        "cbeRate": float(row[5] or 0),
-                        "propertyCount": int(prop_row[0]) if prop_row else 0,
-                        "updatedAt": row[6].isoformat() if row[6] else None,
-                    }
-        return {}
+                # Get spend stats
+                cur.execute("""
+                    SELECT
+                        COUNT(*) as payment_count,
+                        COALESCE(SUM(spend_amount), 0) as total_spend,
+                        COALESCE(AVG(spend_amount), 0) as avg_payment
+                    FROM analytics.fact_spend
+                """)
+                spend_row = cur.fetchone()
+
+                total_suppliers = supplier_row[0] or 0
+                cbe_suppliers = supplier_row[1] or 0
+                cbe_rate = (cbe_suppliers / total_suppliers * 100) if total_suppliers > 0 else 0
+
+                return {
+                    "totalSuppliers": total_suppliers,
+                    "cbeSuppliers": cbe_suppliers,
+                    "totalContracts": contract_count or 0,
+                    "totalPayments": spend_row[0] or 0,
+                    "totalSpend": float(spend_row[1] or 0),
+                    "avgPayment": float(spend_row[2] or 0),
+                    "cbeRate": round(cbe_rate, 2),
+                    "updatedAt": datetime.now().isoformat(),
+                }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -89,42 +108,24 @@ def get_kpis() -> dict[str, Any]:
 # SPEND ENDPOINTS
 # =============================================================================
 
-@app.get("/api/spend/monthly")
-def get_monthly_spend() -> dict[str, Any]:
-    """Get monthly spend trend (last 12 months)."""
+@app.get("/api/spend/by-fiscal-year")
+def get_spend_by_fiscal_year() -> dict[str, Any]:
+    """Get spend by fiscal year."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT year_month, total_spend
-                    FROM analytics.mv_monthly_spend_trend
-                    ORDER BY year_month DESC
-                    LIMIT 12
-                """)
-                rows = cur.fetchall()[::-1]
-                return {
-                    "labels": [r[0] for r in rows],
-                    "data": [round(float(r[1] or 0) / 1_000_000, 2) for r in rows]
-                }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/spend/by-ward")
-def get_spend_by_ward() -> dict[str, Any]:
-    """Get spend aggregated by DC ward."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT ward, SUM(total_spend) as total
-                    FROM analytics.mv_spend_by_ward
-                    GROUP BY ward
-                    ORDER BY ward
+                    SELECT
+                        fiscal_year,
+                        SUM(spend_amount) as total
+                    FROM analytics.fact_spend
+                    WHERE fiscal_year IS NOT NULL
+                    GROUP BY fiscal_year
+                    ORDER BY fiscal_year
                 """)
                 rows = cur.fetchall()
                 return {
-                    "labels": [r[0] for r in rows],
+                    "labels": [str(r[0]) for r in rows],
                     "data": [round(float(r[1] or 0) / 1_000_000, 2) for r in rows]
                 }
     except Exception as e:
@@ -132,20 +133,23 @@ def get_spend_by_ward() -> dict[str, Any]:
 
 
 @app.get("/api/spend/by-agency")
-def get_spend_by_agency(limit: int = 8) -> dict[str, Any]:
+def get_spend_by_agency(limit: int = 10) -> dict[str, Any]:
     """Get spend by agency (top N)."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT agency_name_normalized, total_contract_value
-                    FROM analytics.gold_agency_spend
-                    ORDER BY total_contract_value DESC NULLS LAST
+                    SELECT
+                        COALESCE(agency_name, 'Unknown') as agency,
+                        SUM(spend_amount) as total
+                    FROM analytics.fact_spend
+                    GROUP BY agency_name
+                    ORDER BY total DESC NULLS LAST
                     LIMIT %s
                 """, (limit,))
                 rows = cur.fetchall()
                 return {
-                    "labels": [r[0][:20] if r[0] else "Unknown" for r in rows],
+                    "labels": [r[0][:30] if r[0] else "Unknown" for r in rows],
                     "data": [round(float(r[1] or 0) / 1_000_000, 2) for r in rows]
                 }
     except Exception as e:
@@ -153,127 +157,48 @@ def get_spend_by_agency(limit: int = 8) -> dict[str, Any]:
 
 
 # =============================================================================
-# VENDOR ENDPOINTS
+# SUPPLIER ENDPOINTS
 # =============================================================================
 
-@app.get("/api/vendors/tiers")
-def get_vendor_tiers() -> dict[str, Any]:
-    """Get vendor breakdown by spend tier."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        CASE
-                            WHEN total_payments >= 10000000 THEN 'Enterprise (>$10M)'
-                            WHEN total_payments >= 1000000 THEN 'Large ($1M-$10M)'
-                            WHEN total_payments >= 100000 THEN 'Medium ($100K-$1M)'
-                            ELSE 'Small (<$100K)'
-                        END as tier,
-                        SUM(total_payments) as total
-                    FROM analytics.gold_spend_by_vendor
-                    GROUP BY 1
-                    ORDER BY total DESC
-                """)
-                rows = cur.fetchall()
-                return {
-                    "labels": [r[0] for r in rows],
-                    "data": [round(float(r[1] or 0) / 1_000_000, 2) for r in rows]
-                }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/vendors/top")
-def get_top_vendors(limit: int = 10) -> list[dict[str, Any]]:
-    """Get top vendors by total payments."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        vendor_id,
-                        vendor_name,
-                        vendor_name_normalized,
-                        total_payments,
-                        contract_count,
-                        agency_count,
-                        is_cbe,
-                        CASE
-                            WHEN total_payments >= 10000000 THEN 'Enterprise'
-                            WHEN total_payments >= 1000000 THEN 'Large'
-                            WHEN total_payments >= 100000 THEN 'Medium'
-                            ELSE 'Small'
-                        END as tier
-                    FROM analytics.gold_spend_by_vendor
-                    ORDER BY total_payments DESC NULLS LAST
-                    LIMIT %s
-                """, (limit,))
-                rows = cur.fetchall()
-                return [
-                    {
-                        "rank": i + 1,
-                        "vendorId": r[0],
-                        "name": r[1] or "Unknown",
-                        "normalized": r[2] or "",
-                        "payments": float(r[3] or 0),
-                        "contracts": r[4] or 0,
-                        "agencies": r[5] or 0,
-                        "isCbe": r[6] or False,
-                        "tier": r[7],
-                    }
-                    for i, r in enumerate(rows)
-                ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/vendors/all")
-def get_all_vendors(
-    limit: int = Query(500, ge=1, le=5000),
+@app.get("/api/suppliers")
+def get_suppliers(
+    limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     cbe_only: bool = Query(False)
 ) -> list[dict[str, Any]]:
-    """Get all vendors with pagination."""
+    """Get suppliers with pagination."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 where_clause = "WHERE is_cbe = TRUE" if cbe_only else ""
                 cur.execute(f"""
                     SELECT
-                        vendor_id,
-                        vendor_name,
-                        vendor_name_normalized,
-                        total_payments,
-                        contract_count,
-                        agency_count,
+                        supplier_id,
+                        supplier_name,
+                        dba_name,
+                        city,
+                        state,
+                        zip_code,
                         is_cbe,
-                        first_contract_date,
-                        last_payment_date,
-                        CASE
-                            WHEN total_payments >= 10000000 THEN 'Enterprise'
-                            WHEN total_payments >= 1000000 THEN 'Large'
-                            WHEN total_payments >= 100000 THEN 'Medium'
-                            ELSE 'Small'
-                        END as tier
-                    FROM analytics.gold_spend_by_vendor
+                        cbe_categories,
+                        registration_date
+                    FROM analytics.dim_supplier
                     {where_clause}
-                    ORDER BY total_payments DESC NULLS LAST
+                    ORDER BY supplier_name
                     LIMIT %s OFFSET %s
                 """, (limit, offset))
                 rows = cur.fetchall()
                 return [
                     {
-                        "vendor_id": r[0],
-                        "vendor_name": r[1] or "Unknown",
-                        "vendor_name_normalized": r[2] or "",
-                        "total_payments": float(r[3] or 0),
-                        "contract_count": r[4] or 0,
-                        "agency_count": r[5] or 0,
+                        "supplier_id": str(r[0]),
+                        "supplier_name": r[1] or "Unknown",
+                        "dba_name": r[2],
+                        "city": r[3],
+                        "state": r[4],
+                        "zip_code": r[5],
                         "is_cbe": r[6] or False,
-                        "first_contract_date": r[7].isoformat() if r[7] else None,
-                        "last_payment_date": r[8].isoformat() if r[8] else None,
-                        "tier": r[9],
+                        "cbe_categories": r[7] or [],
+                        "registration_date": r[8].isoformat() if r[8] else None,
                     }
                     for r in rows
                 ]
@@ -281,102 +206,88 @@ def get_all_vendors(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/vendors/{vendor_id}")
-def get_vendor_details(vendor_id: str) -> dict[str, Any]:
-    """Get detailed information for a specific vendor."""
+@app.get("/api/suppliers/top")
+def get_top_suppliers(limit: int = 10) -> list[dict[str, Any]]:
+    """Get top suppliers by spend amount."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT
-                        vendor_id,
-                        vendor_name,
-                        vendor_name_normalized,
-                        total_contract_value,
-                        total_po_value,
-                        total_payments,
-                        contract_count,
-                        po_count,
-                        payment_count,
-                        agencies,
-                        agency_count,
-                        first_contract_date,
-                        last_payment_date,
-                        fiscal_years,
-                        is_cbe,
-                        computed_at
-                    FROM analytics.gold_spend_by_vendor
-                    WHERE vendor_id = %s
-                """, (vendor_id,))
-                row = cur.fetchone()
-
-                if not row:
-                    raise HTTPException(status_code=404, detail="Vendor not found")
-
-                return {
-                    "vendor_id": row[0],
-                    "vendor_name": row[1],
-                    "vendor_name_normalized": row[2],
-                    "total_contract_value": float(row[3] or 0),
-                    "total_po_value": float(row[4] or 0),
-                    "total_payments": float(row[5] or 0),
-                    "contract_count": row[6] or 0,
-                    "po_count": row[7] or 0,
-                    "payment_count": row[8] or 0,
-                    "agencies": row[9] or [],
-                    "agency_count": row[10] or 0,
-                    "first_contract_date": row[11].isoformat() if row[11] else None,
-                    "last_payment_date": row[12].isoformat() if row[12] else None,
-                    "fiscal_years": row[13] or [],
-                    "is_cbe": row[14] or False,
-                    "computed_at": row[15].isoformat() if row[15] else None,
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/vendors/{vendor_id}/timeline")
-def get_vendor_timeline(vendor_id: str) -> list[dict[str, Any]]:
-    """Get monthly payment timeline for a vendor."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                # Try to get from fact_spend if available
-                cur.execute("""
-                    SELECT
-                        TO_CHAR(d.full_date, 'Mon YYYY') as month,
-                        d.full_date,
-                        SUM(f.spend_amount) as spend
-                    FROM analytics.fact_spend f
-                    JOIN analytics.dim_date d ON f.date_key = d.date_key
-                    JOIN analytics.dim_supplier s ON f.supplier_key = s.supplier_key
-                    WHERE s.supplier_uuid = %s
-                    GROUP BY 1, 2
-                    ORDER BY d.full_date DESC
-                    LIMIT 24
-                """, (vendor_id,))
-                rows = cur.fetchall()[::-1]  # Reverse to chronological order
-
-                if rows:
-                    return [
-                        {
-                            "month": r[0],
-                            "date": r[1].isoformat() if r[1] else None,
-                            "spend": float(r[2] or 0),
-                        }
-                        for r in rows
-                    ]
-
-                # Fallback: return empty if no data
-                return []
+                        s.supplier_id,
+                        s.supplier_name,
+                        s.is_cbe,
+                        COUNT(f.spend_id) as payment_count,
+                        COALESCE(SUM(f.spend_amount), 0) as total_spend
+                    FROM analytics.dim_supplier s
+                    LEFT JOIN analytics.fact_spend f ON s.supplier_id = f.supplier_id
+                    GROUP BY s.supplier_id, s.supplier_name, s.is_cbe
+                    ORDER BY total_spend DESC NULLS LAST
+                    LIMIT %s
+                """, (limit,))
+                rows = cur.fetchall()
+                return [
+                    {
+                        "rank": i + 1,
+                        "supplier_id": str(r[0]),
+                        "name": r[1] or "Unknown",
+                        "is_cbe": r[2] or False,
+                        "payment_count": r[3] or 0,
+                        "total_spend": float(r[4] or 0),
+                    }
+                    for i, r in enumerate(rows)
+                ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
-# CBE ENDPOINTS
+# CONTRACT ENDPOINTS
+# =============================================================================
+
+@app.get("/api/contracts")
+def get_contracts(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0)
+) -> list[dict[str, Any]]:
+    """Get contracts with pagination."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        contract_id,
+                        contract_number,
+                        contract_title,
+                        contract_type,
+                        procurement_method,
+                        agency_name,
+                        nigp_codes,
+                        naics_codes
+                    FROM analytics.dim_contract
+                    ORDER BY contract_number
+                    LIMIT %s OFFSET %s
+                """, (limit, offset))
+                rows = cur.fetchall()
+                return [
+                    {
+                        "contract_id": str(r[0]),
+                        "contract_number": r[1],
+                        "title": r[2],
+                        "contract_type": r[3],
+                        "procurement_method": r[4],
+                        "agency_name": r[5],
+                        "nigp_codes": r[6] or [],
+                        "naics_codes": r[7] or [],
+                    }
+                    for r in rows
+                ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# CBE SUMMARY
 # =============================================================================
 
 @app.get("/api/cbe/summary")
@@ -387,260 +298,28 @@ def get_cbe_summary() -> dict[str, Any]:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT
-                        COUNT(*) FILTER (WHERE is_cbe) as cbe_vendor_count,
-                        COUNT(*) FILTER (WHERE NOT is_cbe OR is_cbe IS NULL) as non_cbe_vendor_count,
-                        COALESCE(SUM(total_payments) FILTER (WHERE is_cbe), 0) as cbe_spend,
-                        COALESCE(SUM(total_payments) FILTER (WHERE NOT is_cbe OR is_cbe IS NULL), 0) as non_cbe_spend
-                    FROM analytics.gold_spend_by_vendor
-                """)
-                row = cur.fetchone()
-
-                # Get by tier breakdown
-                cur.execute("""
-                    SELECT
-                        CASE
-                            WHEN total_payments >= 10000000 THEN 'Enterprise'
-                            WHEN total_payments >= 1000000 THEN 'Large'
-                            WHEN total_payments >= 100000 THEN 'Medium'
-                            ELSE 'Small'
-                        END as tier,
                         COUNT(*) FILTER (WHERE is_cbe) as cbe_count,
                         COUNT(*) FILTER (WHERE NOT is_cbe OR is_cbe IS NULL) as non_cbe_count
-                    FROM analytics.gold_spend_by_vendor
-                    GROUP BY 1
-                    ORDER BY CASE tier
-                        WHEN 'Enterprise' THEN 1
-                        WHEN 'Large' THEN 2
-                        WHEN 'Medium' THEN 3
-                        ELSE 4
-                    END
+                    FROM analytics.dim_supplier
                 """)
-                tier_rows = cur.fetchall()
-
-                return {
-                    "cbeVendorCount": row[0] or 0,
-                    "nonCbeVendorCount": row[1] or 0,
-                    "cbeSpend": float(row[2] or 0),
-                    "nonCbeSpend": float(row[3] or 0),
-                    "byTier": {
-                        "labels": [r[0] for r in tier_rows],
-                        "cbe": [r[1] or 0 for r in tier_rows],
-                        "nonCbe": [r[2] or 0 for r in tier_rows],
-                    }
-                }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/cbe/vendors")
-def get_cbe_vendors(limit: int = 50) -> list[dict[str, Any]]:
-    """Get list of CBE vendors sorted by payments."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        vendor_id,
-                        vendor_name,
-                        vendor_name_normalized,
-                        total_payments,
-                        contract_count,
-                        agency_count,
-                        CASE
-                            WHEN total_payments >= 10000000 THEN 'Enterprise'
-                            WHEN total_payments >= 1000000 THEN 'Large'
-                            WHEN total_payments >= 100000 THEN 'Medium'
-                            ELSE 'Small'
-                        END as tier
-                    FROM analytics.gold_spend_by_vendor
-                    WHERE is_cbe = TRUE
-                    ORDER BY total_payments DESC NULLS LAST
-                    LIMIT %s
-                """, (limit,))
-                rows = cur.fetchall()
-                return [
-                    {
-                        "vendor_id": r[0],
-                        "vendor_name": r[1] or "Unknown",
-                        "vendor_name_normalized": r[2] or "",
-                        "total_payments": float(r[3] or 0),
-                        "contract_count": r[4] or 0,
-                        "agency_count": r[5] or 0,
-                        "tier": r[6],
-                    }
-                    for r in rows
-                ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =============================================================================
-# AGENCY ENDPOINTS
-# =============================================================================
-
-@app.get("/api/agencies/list")
-def get_agencies_list() -> list[str]:
-    """Get list of all agency names for filtering."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT DISTINCT agency_name_normalized
-                    FROM analytics.gold_agency_spend
-                    WHERE agency_name_normalized IS NOT NULL
-                    ORDER BY agency_name_normalized
-                """)
-                return [r[0] for r in cur.fetchall()]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/agencies/{agency_name}")
-def get_agency_details(agency_name: str) -> dict[str, Any]:
-    """Get detailed information for a specific agency."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        agency_name_normalized,
-                        agency_name,
-                        total_contract_value,
-                        total_payments,
-                        total_po_value,
-                        contract_count,
-                        vendor_count,
-                        top_vendors,
-                        fiscal_year_breakdown,
-                        computed_at
-                    FROM analytics.gold_agency_spend
-                    WHERE agency_name_normalized = %s
-                """, (agency_name,))
                 row = cur.fetchone()
 
-                if not row:
-                    raise HTTPException(status_code=404, detail="Agency not found")
-
-                return {
-                    "agency_name_normalized": row[0],
-                    "agency_name": row[1],
-                    "total_contract_value": float(row[2] or 0),
-                    "total_payments": float(row[3] or 0),
-                    "total_po_value": float(row[4] or 0),
-                    "contract_count": row[5] or 0,
-                    "vendor_count": row[6] or 0,
-                    "top_vendors": row[7] or [],
-                    "fiscal_year_breakdown": row[8] or {},
-                    "computed_at": row[9].isoformat() if row[9] else None,
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =============================================================================
-# REAL ESTATE ENDPOINTS
-# =============================================================================
-
-@app.get("/api/real-estate/property-by-ward")
-def get_property_by_ward() -> list[dict[str, Any]]:
-    """Get property statistics by DC ward."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
+                # Get spend by CBE status
                 cur.execute("""
                     SELECT
-                        ward,
-                        property_count,
-                        total_assessed_value,
-                        avg_assessed_value,
-                        median_assessed_value,
-                        min_assessed_value,
-                        max_assessed_value,
-                        avg_sqft,
-                        avg_price_per_sqft,
-                        avg_year_built,
-                        property_type_distribution,
-                        bedroom_distribution
-                    FROM analytics.gold_property_by_ward
-                    ORDER BY ward
+                        COALESCE(SUM(f.spend_amount) FILTER (WHERE s.is_cbe), 0) as cbe_spend,
+                        COALESCE(SUM(f.spend_amount) FILTER (WHERE NOT s.is_cbe OR s.is_cbe IS NULL), 0) as non_cbe_spend
+                    FROM analytics.fact_spend f
+                    LEFT JOIN analytics.dim_supplier s ON f.supplier_id = s.supplier_id
                 """)
-                rows = cur.fetchall()
-                return [
-                    {
-                        "ward": r[0],
-                        "property_count": r[1] or 0,
-                        "total_assessed_value": float(r[2] or 0),
-                        "avg_assessed_value": float(r[3] or 0),
-                        "median_assessed_value": float(r[4] or 0),
-                        "min_assessed_value": float(r[5] or 0),
-                        "max_assessed_value": float(r[6] or 0),
-                        "avg_sqft": float(r[7] or 0),
-                        "avg_price_per_sqft": float(r[8] or 0),
-                        "avg_year_built": float(r[9] or 0),
-                        "property_type_distribution": r[10] or {},
-                        "bedroom_distribution": r[11] or {},
-                    }
-                    for r in rows
-                ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+                spend_row = cur.fetchone()
 
-
-@app.get("/api/real-estate/market-trends")
-def get_market_trends(
-    metric_name: Optional[str] = None,
-    region_type: Optional[str] = None
-) -> list[dict[str, Any]]:
-    """Get market trend data (Zillow, RentCast, etc.)."""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                query = """
-                    SELECT
-                        region_name,
-                        region_type,
-                        metric_name,
-                        metric_category,
-                        latest_value,
-                        latest_date,
-                        yoy_change,
-                        mom_change,
-                        trend_direction,
-                        historical_values
-                    FROM analytics.gold_market_trends
-                    WHERE 1=1
-                """
-                params = []
-
-                if metric_name:
-                    query += " AND metric_name = %s"
-                    params.append(metric_name)
-
-                if region_type:
-                    query += " AND region_type = %s"
-                    params.append(region_type)
-
-                query += " ORDER BY metric_name, region_name"
-
-                cur.execute(query, params)
-                rows = cur.fetchall()
-                return [
-                    {
-                        "region_name": r[0],
-                        "region_type": r[1],
-                        "metric_name": r[2],
-                        "metric_category": r[3],
-                        "latest_value": float(r[4] or 0),
-                        "latest_date": r[5].isoformat() if r[5] else None,
-                        "yoy_change": float(r[6] or 0),
-                        "mom_change": float(r[7] or 0),
-                        "trend_direction": r[8],
-                        "historical_values": r[9] or [],
-                    }
-                    for r in rows
-                ]
+                return {
+                    "cbeSupplierCount": row[0] or 0,
+                    "nonCbeSupplierCount": row[1] or 0,
+                    "cbeSpend": float(spend_row[0] or 0),
+                    "nonCbeSpend": float(spend_row[1] or 0),
+                }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -652,21 +331,145 @@ def get_market_trends(
 @app.get("/api/all")
 def get_all_dashboard_data() -> dict[str, Any]:
     """Get all dashboard data in a single request."""
-    return {
-        "kpis": get_kpis(),
-        "monthlySpend": get_monthly_spend(),
-        "spendByWard": get_spend_by_ward(),
-        "agencySpend": get_spend_by_agency(),
-        "vendorTiers": get_vendor_tiers(),
-        "topVendors": get_top_vendors(),
-        "exportedAt": datetime.now().isoformat(),
-    }
+    try:
+        return {
+            "kpis": get_kpis(),
+            "spendByFiscalYear": get_spend_by_fiscal_year(),
+            "spendByAgency": get_spend_by_agency(),
+            "topSuppliers": get_top_suppliers(),
+            "cbeSummary": get_cbe_summary(),
+            "exportedAt": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
-# STATIC FILES (Must be last)
+# ROOT HTML DASHBOARD
 # =============================================================================
 
-dashboard_dir = Path(__file__).parent / "dashboard"
-if dashboard_dir.exists():
-    app.mount("/", StaticFiles(directory=dashboard_dir, html=True), name="dashboard")
+@app.get("/", response_class=HTMLResponse)
+def root():
+    """Serve a simple dashboard HTML page."""
+    return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DC Data Platform Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; }
+        .header { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: white; padding: 2rem; }
+        .header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .header p { opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .kpi-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .kpi-card .value { font-size: 2rem; font-weight: 700; color: #1e3a5f; }
+        .kpi-card .label { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
+        .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; }
+        .chart-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .chart-card h3 { margin-bottom: 1rem; color: #1e3a5f; }
+        .loading { text-align: center; padding: 2rem; color: #666; }
+        .error { background: #fee; color: #c00; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        .cbe-badge { background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DC Data Platform Dashboard</h1>
+        <p>Real-time procurement analytics</p>
+    </div>
+    <div class="container">
+        <div id="error" class="error" style="display: none;"></div>
+        <div class="kpi-grid" id="kpis">
+            <div class="loading">Loading KPIs...</div>
+        </div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Spend by Fiscal Year (Millions $)</h3>
+                <canvas id="fyChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Top Agencies by Spend (Millions $)</h3>
+                <canvas id="agencyChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card" style="margin-top: 1.5rem;">
+            <h3>Top Suppliers</h3>
+            <table id="suppliersTable">
+                <thead>
+                    <tr><th>#</th><th>Supplier</th><th>CBE</th><th>Payments</th><th>Total Spend</th></tr>
+                </thead>
+                <tbody id="suppliersBody">
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        async function loadDashboard() {
+            try {
+                const resp = await fetch('/api/all');
+                if (!resp.ok) throw new Error('API error: ' + resp.status);
+                const data = await resp.json();
+
+                // KPIs
+                const kpis = data.kpis;
+                document.getElementById('kpis').innerHTML = `
+                    <div class="kpi-card"><div class="value">${kpis.totalSuppliers.toLocaleString()}</div><div class="label">Total Suppliers</div></div>
+                    <div class="kpi-card"><div class="value">${kpis.cbeSuppliers.toLocaleString()}</div><div class="label">CBE Suppliers</div></div>
+                    <div class="kpi-card"><div class="value">${kpis.totalContracts.toLocaleString()}</div><div class="label">Contracts</div></div>
+                    <div class="kpi-card"><div class="value">${kpis.totalPayments.toLocaleString()}</div><div class="label">Payments</div></div>
+                    <div class="kpi-card"><div class="value">$${(kpis.totalSpend/1e9).toFixed(2)}B</div><div class="label">Total Spend</div></div>
+                    <div class="kpi-card"><div class="value">${kpis.cbeRate}%</div><div class="label">CBE Rate</div></div>
+                `;
+
+                // Fiscal Year Chart
+                new Chart(document.getElementById('fyChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.spendByFiscalYear.labels,
+                        datasets: [{ label: 'Spend ($M)', data: data.spendByFiscalYear.data, backgroundColor: '#1e3a5f' }]
+                    },
+                    options: { responsive: true, plugins: { legend: { display: false } } }
+                });
+
+                // Agency Chart
+                new Chart(document.getElementById('agencyChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.spendByAgency.labels,
+                        datasets: [{ label: 'Spend ($M)', data: data.spendByAgency.data, backgroundColor: '#2d5a87' }]
+                    },
+                    options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } } }
+                });
+
+                // Suppliers Table
+                const tbody = document.getElementById('suppliersBody');
+                tbody.innerHTML = data.topSuppliers.map(s => `
+                    <tr>
+                        <td>${s.rank}</td>
+                        <td>${s.name}</td>
+                        <td>${s.is_cbe ? '<span class="cbe-badge">CBE</span>' : ''}</td>
+                        <td>${s.payment_count.toLocaleString()}</td>
+                        <td>$${(s.total_spend/1e6).toFixed(2)}M</td>
+                    </tr>
+                `).join('');
+
+            } catch (e) {
+                document.getElementById('error').textContent = 'Error loading data: ' + e.message;
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+        loadDashboard();
+    </script>
+</body>
+</html>
+"""

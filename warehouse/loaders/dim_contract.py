@@ -48,7 +48,7 @@ class DimContractLoader(BaseParquetLoader):
             naics_codes = self._parse_codes(r.get("naics_codes"))
 
             transformed.append({
-                "contract_uuid": str(uuid.uuid4()),
+                "contract_id": str(uuid.uuid4()),
                 "contract_number": contract_num,
                 "contract_title": r.get("title") or r.get("description"),
                 "contract_type": r.get("contract_type"),
@@ -92,7 +92,7 @@ class DimContractLoader(BaseParquetLoader):
                 cursor.execute(
                     """
                     INSERT INTO analytics.dim_contract (
-                        contract_uuid, contract_number, contract_title,
+                        contract_id, contract_number, contract_title,
                         contract_type, procurement_method,
                         nigp_codes, naics_codes,
                         agency_code, agency_name,
@@ -100,7 +100,7 @@ class DimContractLoader(BaseParquetLoader):
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                     )
-                    ON CONFLICT (contract_uuid) DO UPDATE SET
+                    ON CONFLICT (contract_id) DO UPDATE SET
                         contract_number = EXCLUDED.contract_number,
                         contract_title = EXCLUDED.contract_title,
                         contract_type = EXCLUDED.contract_type,
@@ -113,7 +113,7 @@ class DimContractLoader(BaseParquetLoader):
                     RETURNING (xmax = 0) AS inserted
                     """,
                     (
-                        r["contract_uuid"],
+                        r["contract_id"],
                         r["contract_number"],
                         r.get("contract_title"),
                         r.get("contract_type"),

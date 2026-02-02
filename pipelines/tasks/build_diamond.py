@@ -66,7 +66,6 @@ try:
         gold_path='{gold_path}',
         diamond_path='{diamond_path}',
         datasets={datasets if datasets else None},
-        force_rebuild={force_rebuild},
     )
     print("BUILD_SUCCESS")
     for dataset, count in results.items():

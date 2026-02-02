@@ -152,7 +152,7 @@ class DimSupplierLoader(BaseParquetLoader):
                 continue
 
             transformed.append({
-                "supplier_uuid": str(uuid.uuid4()),
+                "supplier_id": str(uuid.uuid4()),
                 "supplier_name": supplier_name,
                 "dba_name": r.get("dba_name"),
                 "business_address": r.get("business_address"),
@@ -176,14 +176,14 @@ class DimSupplierLoader(BaseParquetLoader):
                 cursor.execute(
                     """
                     INSERT INTO analytics.dim_supplier (
-                        supplier_uuid, supplier_name, dba_name,
+                        supplier_id, supplier_name, dba_name,
                         business_address, city, state, zip_code,
                         is_cbe, cbe_categories, registration_date,
                         updated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                     )
-                    ON CONFLICT (supplier_uuid) DO UPDATE SET
+                    ON CONFLICT (supplier_id) DO UPDATE SET
                         supplier_name = EXCLUDED.supplier_name,
                         dba_name = EXCLUDED.dba_name,
                         business_address = EXCLUDED.business_address,
@@ -196,7 +196,7 @@ class DimSupplierLoader(BaseParquetLoader):
                     RETURNING (xmax = 0) AS inserted
                     """,
                     (
-                        r["supplier_uuid"],
+                        r["supplier_id"],
                         r["supplier_name"],
                         r.get("dba_name"),
                         r.get("business_address"),
