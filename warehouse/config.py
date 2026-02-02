@@ -51,23 +51,21 @@ class Config:
     @classmethod
     def from_env(cls) -> "Config":
         """Load configuration from environment variables."""
-        scrapers_path = Path(
-            os.environ.get(
-                "SCRAPERS_UNIFIED_PATH",
-                "/home/lgalvao/OneDrive/Scripts/scrapers_unified/data",
-            )
+        # Use DC_ prefixed vars (preferred) or fall back to legacy names
+        data_path = Path(
+            os.environ.get("DC_DATA_PATH", os.environ.get("SCRAPERS_UNIFIED_PATH", "data"))
         )
 
         return cls(
-            scrapers_unified_path=scrapers_path,
-            silver_path=scrapers_path / "silver",
-            gold_path=scrapers_path / "gold",
+            scrapers_unified_path=data_path,
+            silver_path=data_path / "silver",
+            gold_path=data_path / "gold",
             warehouse_db=DatabaseConfig(
-                host=os.environ.get("WAREHOUSE_DB_HOST", "localhost"),
-                port=int(os.environ.get("WAREHOUSE_DB_PORT", "5433")),
-                database=os.environ.get("WAREHOUSE_DB_NAME", "procurement_warehouse"),
-                user=os.environ.get("WAREHOUSE_DB_USER", "warehouse_user"),
-                password=os.environ.get("WAREHOUSE_DB_PASSWORD", "change_me_warehouse"),
+                host=os.environ.get("DC_WAREHOUSE_DB_HOST", os.environ.get("WAREHOUSE_DB_HOST", "localhost")),
+                port=int(os.environ.get("DC_WAREHOUSE_DB_PORT", os.environ.get("WAREHOUSE_DB_PORT", "5432"))),
+                database=os.environ.get("DC_WAREHOUSE_DB_NAME", os.environ.get("WAREHOUSE_DB_NAME", "procurement_warehouse")),
+                user=os.environ.get("DC_WAREHOUSE_DB_USER", os.environ.get("WAREHOUSE_DB_USER", "warehouse_user")),
+                password=os.environ.get("DC_WAREHOUSE_DB_PASSWORD", os.environ.get("WAREHOUSE_DB_PASSWORD", "changeme")),
             ),
             batch_size=int(os.environ.get("BATCH_SIZE", "1000")),
         )

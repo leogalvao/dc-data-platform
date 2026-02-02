@@ -5,8 +5,8 @@ services:
     container_name: dc-warehouse
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DC_WAREHOUSE_DB_NAME:-dc_analytics}
-      POSTGRES_USER: ${DC_WAREHOUSE_DB_USER:-postgres}
+      POSTGRES_DB: ${DC_WAREHOUSE_DB_NAME:-procurement_warehouse}
+      POSTGRES_USER: ${DC_WAREHOUSE_DB_USER:-warehouse_user}
       POSTGRES_PASSWORD: ${DC_WAREHOUSE_DB_PASSWORD:-changeme}
     volumes:
       - warehouse_data:/var/lib/postgresql/data
@@ -14,7 +14,7 @@ services:
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d dc_analytics"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d procurement_warehouse"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,8 +46,8 @@ services:
       DC_ENVIRONMENT: ${DC_ENVIRONMENT:-prod}
       DC_WAREHOUSE_DB_HOST: warehouse_db
       DC_WAREHOUSE_DB_PORT: 5432
-      DC_WAREHOUSE_DB_NAME: ${DC_WAREHOUSE_DB_NAME:-dc_analytics}
-      DC_WAREHOUSE_DB_USER: ${DC_WAREHOUSE_DB_USER:-postgres}
+      DC_WAREHOUSE_DB_NAME: ${DC_WAREHOUSE_DB_NAME:-procurement_warehouse}
+      DC_WAREHOUSE_DB_USER: ${DC_WAREHOUSE_DB_USER:-warehouse_user}
       DC_WAREHOUSE_DB_PASSWORD: ${DC_WAREHOUSE_DB_PASSWORD:-changeme}
       DC_LOG_LEVEL: ${DC_LOG_LEVEL:-INFO}
       RAPIDAPI_KEY: ${RAPIDAPI_KEY:-}
@@ -72,8 +72,8 @@ services:
       DC_ENVIRONMENT: ${DC_ENVIRONMENT:-prod}
       DC_WAREHOUSE_DB_HOST: warehouse_db
       DC_WAREHOUSE_DB_PORT: 5432
-      DC_WAREHOUSE_DB_NAME: ${DC_WAREHOUSE_DB_NAME:-dc_analytics}
-      DC_WAREHOUSE_DB_USER: ${DC_WAREHOUSE_DB_USER:-postgres}
+      DC_WAREHOUSE_DB_NAME: ${DC_WAREHOUSE_DB_NAME:-procurement_warehouse}
+      DC_WAREHOUSE_DB_USER: ${DC_WAREHOUSE_DB_USER:-warehouse_user}
       DC_WAREHOUSE_DB_PASSWORD: ${DC_WAREHOUSE_DB_PASSWORD:-changeme}
     ports:
       - "8000:8000"
@@ -95,8 +95,8 @@ services:
       DC_ENVIRONMENT: ${DC_ENVIRONMENT:-prod}
       DC_WAREHOUSE_DB_HOST: warehouse_db
       DC_WAREHOUSE_DB_PORT: 5432
-      DC_WAREHOUSE_DB_NAME: ${DC_WAREHOUSE_DB_NAME:-dc_analytics}
-      DC_WAREHOUSE_DB_USER: ${DC_WAREHOUSE_DB_USER:-postgres}
+      DC_WAREHOUSE_DB_NAME: ${DC_WAREHOUSE_DB_NAME:-procurement_warehouse}
+      DC_WAREHOUSE_DB_USER: ${DC_WAREHOUSE_DB_USER:-warehouse_user}
       DC_WAREHOUSE_DB_PASSWORD: ${DC_WAREHOUSE_DB_PASSWORD:-changeme}
       DC_LOG_LEVEL: ${DC_LOG_LEVEL:-INFO}
       RAPIDAPI_KEY: ${RAPIDAPI_KEY:-}
